@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# XXX
+# Runtime broken with tt0000240
+
 true
 # shellcheck disable=SC2034
 readonly CLI_VERSION="0.1.0"
@@ -14,67 +17,76 @@ dc::commander::declare::arg 1 "^tt[0-9]{7}$" "imdbID" "the id of the movie (eg: 
 # Start commander
 dc::commander::boot
 # Requirements
-dc::require jq --version 1.5
+dc::require jq 1.5
 
 # Init sqlite
 dc-ext::sqlite::init "$HOME/tmp/fi-client-imdb/cache.db"
 dc-ext::http-cache::init
 
 # Request the main page and get the body
-dc-ext::http-cache::request "https://www.imdb.com/title/$DC_PARGV_1/" GET
-body="$(printf "%s" "$DC_HTTP_BODY" | dc::portable::base64d | tr '\n' ' ')"
+
+body="$(dc-ext::http-cache::request "https://www.imdb.com/title/$DC_ARG_1/" GET | dc::wrapped::base64d | tr '\n' ' ')"
 
 # Extract the shema.org section, then the original title and picture url
 schema=$(printf "%s" "$body" | sed -E 's/.*<script type="application\/ld[+]json">([^<]+).*/\1/')
-IMDB_ORIGINAL_TITLE=$(printf "%s" "$schema" | jq -r -c .name)
-IMDB_PICTURE=$(printf "%s" "$schema" | jq -r -c .image)
-[ "$IMDB_PICTURE" != "null" ] || IMDB_PICTURE=
+
+# >&2 jq <<<"$schema"
+
+IMDB_SCHEMA_TITLE=$(printf "%s" "$schema" | jq -r '.name')
+IMDB_SCHEMA_PICTURE=$(printf "%s" "$schema" | jq -r 'select(.image != null).image')
+IMDB_SCHEMA_TYPE=$(printf "%s" "$schema" | jq -r '."@type"')
+IMDB_SCHEMA_DATE=$(printf "%s" "$schema" | jq -r 'select(.datePublished != null).datePublished')
+# dc::output::json "$schema"
+IMDB_SCHEMA_DIRECTOR=$(printf "%s" "$schema" | jq -r 'select(.director != null).director | if type=="array" then .[0].name else .name end')
+IMDB_SCHEMA_CREATOR=$(printf "%s" "$schema" | jq -r 'select(.creator != null).creator | if type=="array" then .[0] else . end | select(.name != null).name')
+IMDB_SCHEMA_DURATION=$(printf "%s" "$schema" | jq -r 'select(.duration != null).duration')
 
 # If we are being asked about the image, go for it, using fancy iterm extensions if they are here
-if [ "$DC_ARGE_IMAGE" ]; then
-  if [ ! "$IMDB_PICTURE" ]; then
+if dc::args::exist image; then
+  if [ ! "$IMDB_SCHEMA_PICTURE" ]; then
     dc::logger::error "This movie does not come with a picture."
-    exit "$ERROR_FAILED"
+    exit "$ERROR_GENERIC_FAILURE"
   fi
-  dc-ext::http-cache::request "$IMDB_PICTURE" GET
+  body="$(dc-ext::http-cache::request "$IMDB_SCHEMA_PICTURE" GET)"
 
-  if [ ! "$DC_ARGV_IMAGE" ] || [ "$DC_ARGV_IMAGE" == "show" ]; then
+  if [ "$DC_ARG_IMAGE" == "show" ]; then
     if [ "$TERM_PROGRAM" != "iTerm.app" ]; then
       dc::logger::error "You need iTerm2 to display the image"
-      exit "$ERROR_FAILED"
+      exit "$ERROR_GENERIC_FAILURE"
     fi
-    printf "\\033]1337;File=name=%s;inline=1;preserveAspectRatio=true;width=50:%s\\a" "$DC_PARGV_1" "$DC_HTTP_BODY"
+    printf "\\033]1337;File=name=%s;inline=1;preserveAspectRatio=true;width=50:%s\\a" "$DC_ARG_1" "$body"
     exit
   fi
-  printf "%s" "$DC_HTTP_BODY" | dc::portable::base64d
+  printf "%s" "$body" | dc::wrapped::base64d
   exit
 fi
-
 
 # Otherwise, move on
 
 # Process the body to get the title, year and type
-cleaned=$(printf "%s" "${body}" | sed -E "s/.*<meta property='og:title' ([^>]+).*/\\1/" | sed -E 's/.*content=\"([^\"]+)\".*/\1/')
+cleaned=$(printf "%s" "${body}" | sed -E "s/.*<meta property='og:title' ([^>]+).*/\1/" | sed -E 's/.*content=\"([^\"]+)\".*/\1/')
 IMDB_YEAR=$(printf "%s" "$cleaned" | sed -E "s/^.*[(]([^)]*[0-9]{4}[–0-9]*)[)].*/\\1/")
 IMDB_YEAR=${IMDB_YEAR##* }
-IMDB_TITLE=$(printf "%s" "$cleaned" | sed -E "s/(.*)[[:space:]]+[(][^)]*[0-9]{4}[–0-9]*[)].*/\\1/" | sed -E 's/&quot;/"/g')
+IMDB_TITLE=$(printf "%s" "$cleaned" | sed -E "s/(.*)[[:space:]]+[(][^)]*[0-9]{4}[–0-9]*[)].*/\1/" | sed -E 's/&quot;/"/g')
 
-cleaned=$(printf "%s" "${body}" | sed -E "s/.*<meta property='og:type' ([^>]+).*/\\1/" | sed -E 's/.*content=\"([^\"]+)\".*/\1/')
+cleaned=$(printf "%s" "${body}" | sed -E "s/.*<meta property='og:type' ([^>]+).*/\1/" | sed -E 's/.*content=\"([^\"]+)\".*/\1/')
 IMDB_TYPE=$(printf "%s" "$cleaned")
 
 # Now, fetch the technical specs
-dc-ext::http-cache::request "https://www.imdb.com/title/$DC_PARGV_1/technical" GET
+body="$(dc-ext::http-cache::request "https://www.imdb.com/title/$DC_ARG_1/technical" GET)" || exit
 
-ALL_IMDB_KEYS=()
 extractTechSpecs(){
   local body="$1"
   local sep
   local techline
   local key
   local value
+  local ar=""
 
-  local technical=${body%%"</tbody>"*}
-  technical=${technical#*"<tbody>"}
+  local technical
+
+  technical=$(printf "%s" "$body" | sed -E 's/.*<tbody>(.*)<\/tbody>.*/\1/')
+
   while
       techline=${technical%%"</tr>"*}
       [ "$techline" != "$technical" ]
@@ -85,57 +97,91 @@ extractTechSpecs(){
     key=${techline%%"</td>"*}
     value=${techline#*"<td>"}
     value=${value%%"</td>"*}
-    key=$(dc::string::trimSpace key | dc::string::toUpper | tr -d '\n' | tr '[:space:]' '_')
-#    key=$(echo "$result" | tr '[:lower:]' '[:upper:]' | tr -d '\n' | tr '[:space:]' '_')
-    sep="<br>"
+    # XXX sed will introduce a trailing line feed
+    key="$(printf "%s" "$key" | sed -E 's/[[:space:]]*$//' | sed -E 's/^[[:space:]]*//' | tr -d '\n' | tr '[:lower:]' '[:upper:]' | tr '[:space:]' '_')"
 
-    # XXX broken: all values may potentially be arrays and that should be reflected in the output json
-    if [ "$key" == "RUNTIME" ]; then
-      IMDB_RUNTIME=()
+    printf '%s"%s": [' "$ar" "$key"
+    ar=", "
+
+    ec=""
+    # >&2 printf ">>>>%s<<<" "$value"
+    if [ "$key" == "SOUND_MIX" ] || [ "$key" == "COLOR" ]; then
+      sep='<span class="ghost">|</span>'
       while IFS= read -r -d '' i; do
-        IMDB_RUNTIME[${#IMDB_RUNTIME[@]}]=$(printf "%s" "$i" | tr -d '\n' | tr -d '\t' | sed -E 's/.*[ (]([0-9]+ min)[[:space:])]*(.*)?$/\1 \2/' | sed -E 's/[[:space:]]*$//')
+        i="$(printf "%s" "$i" | sed -E 's/<[^>]+>//g' | sed -E 's/[[:space:]]*$//' | sed -E 's/^[[:space:]]*//' | sed -E 's/[[:space:]]{2,}/ /g')"
+        printf '%s"%s"' "$ec" "$i"
+        ec=", "
       done < <( dc::string::split value sep )
-      continue
+    elif [ "$key" == "RUNTIME" ]; then
+      sep="<br>"
+      while IFS= read -r -d '' i; do
+      # tt0000110 <- 25 sec
+      # tt0000439 <- 11 min and FPS indication
+      # tt0074749 <- multiple times with indication
+#        i="$(sed -E 's/.*[ (]([0-9]+ [a-z]{3})[[:space:])]*(.*)?$/\1 \2/' <<<"$i" | sed -E 's/[[:space:]]*$//')"
+        # >&2 echo "Trying to process $i"
+        local hr=0
+        local min=0
+        local sec=0
+        local rest=""
+        ! dc::wrapped::grep -q "([0-9]+) hr" <<<"$i" || hr="$(sed -E 's/.*([0-9]+) hr.*/\1/' <<<"$i")"
+        ! dc::wrapped::grep -q "([0-9]+) min[^)]" <<<"$i" || min="$(sed -E 's/(.*[[:space:]*])?([0-9]+) min.*/\2/' <<<"$i")"
+        ! dc::wrapped::grep -q "([0-9]+) sec" <<<"$i" || sec="$(sed -E 's/(.*[[:space:]*])?([0-9]+) sec.*/\2/' <<<"$i")"
+
+        rest="$(sed -E 's/[^(]+([(][0-9]+ min[)] )?(.*)/\2/' <<<"$i" | sed -E 's/[[:space:]]*$//')"
+
+        # >&2 echo "Hour: $hr - Min: $min - Sec: $sec - Rest: $rest"
+
+        i="$((hr * 60 + min))"
+        if [ "$sec" != 0 ]; then
+          i="$((i + 1))"
+        fi
+        if [ "$rest" ]; then
+          i="$i $rest"
+        fi
+        printf '%s"%s"' "$ec" "$i" # | sed -E 's/.*[ (]([0-9]+ min)[[:space:])]*(.*)?$/\1 \2/' | sed -E 's/[[:space:]]*$//' | dc::string::trimSpace
+        ec=", "
+      done < <( dc::string::split value sep )
     else
-      value=$(printf "%s" "$value" | sed -E 's/<[^>]+>//g' | sed -E 's/[[:space:]]{2,}/ /g')
+      sep="<br>"
+      while IFS= read -r -d '' i; do
+        i="$(printf "%s" "$i" | sed -E 's/<[^>]+>//g' | sed -E 's/[[:space:]]*$//' | sed -E 's/^[[:space:]]*//' | sed -E 's/[[:space:]]{2,}/ /g')"
+        printf '%s"%s"' "$ec" "$i"
+        ec=", "
+      done < <( dc::string::split value sep )
     fi
-    read -r "IMDB_$key" < <(printf "%s" "$value")
-    ALL_IMDB_KEYS[${#ALL_IMDB_KEYS[@]}]=$key
-    dc::logger::debug "$key: $value"
+    printf "]"
   done
 }
 
 # Extract the specs
-extractTechSpecs "$(printf "%s" "$DC_HTTP_BODY" | dc::portable::base64d | tr -d '\n')"
+heads="$(extractTechSpecs "$(printf "%s" "$body" | dc::wrapped::base64d | tr -d '\n')")"
 
-# Piss everything out in nice-ish json
-heads=
-for i in "${ALL_IMDB_KEYS[@]}"; do
-  if [[ "TITLE YEAR RUNTIME ASPECT_RATIO" == *"$i"* ]]; then
-    continue
-  fi
-  [ "$heads" ] && heads="$heads,"
-  key=IMDB_$i
-  heads=$heads"\"$i\": \"${!key}\""
-done
+#echo ">$IMDB_YEAR<"
+#echo ">$IMDB_TITLE<"
+#echo ">$IMDB_TYPE<"
 
-result=$(dc::string::join IMDB_RUNTIME '", "')
-
-output=$(printf "%s" "{$heads}" | jq --arg title "$IMDB_TITLE" \
-  --arg year "$IMDB_YEAR" \
-  --arg original "$IMDB_ORIGINAL_TITLE" \
-  --arg picture "$IMDB_PICTURE" \
-  --argjson runtime "[\"$result\"]" \
-  --arg type "$IMDB_TYPE" \
-  --arg id "$DC_PARGV_1" \
-  --arg ratio "$IMDB_ASPECT_RATIO" -rc '{
+output=$(printf "%s" "{$heads}" | jq \
+  --arg title     "$IMDB_TITLE" \
+  --arg year      "$IMDB_YEAR" \
+  --arg date      "$IMDB_SCHEMA_DATE" \
+  --arg original  "$IMDB_SCHEMA_TITLE" \
+  --arg picture   "$IMDB_SCHEMA_PICTURE" \
+  --arg director  "$IMDB_SCHEMA_DIRECTOR" \
+  --arg creator   "$IMDB_SCHEMA_CREATOR" \
+  --arg duration  "$IMDB_SCHEMA_DURATION" \
+  --arg type      "$IMDB_SCHEMA_TYPE" \
+  --arg id        "$DC_ARG_1" \
+  -rc '{
   title: $title,
   original: $original,
   picture: $picture,
+  director: $director,
+  creator: $creator,
+  duration: $duration,
+  date: $date,
   year: $year,
   type: $type,
-  runtime: $runtime,
-  ratio: $ratio,
   id: $id,
   properties: .
 }')

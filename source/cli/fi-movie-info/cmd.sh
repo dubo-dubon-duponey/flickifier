@@ -16,12 +16,12 @@ dc::commander::boot
 # Requirements
 dc::require jq
 dc::require ffprobe
-dc::optional mp4info
+dc::require mp4info || dc::logger::warning "MP4info is recommended (and missing - install bento4)"
 
 # Argument 1 is mandatory and must be a readable file
-dc::fs::isfile "$DC_PARGV_1"
+dc::fs::isfile "$DC_ARG_1"
 
-filename="$DC_PARGV_1"
+filename="$DC_ARG_1"
 dc::logger::info "[movie-info] $filename"
 
 
@@ -30,28 +30,38 @@ info::ffprobe(){
   # XXX avprobe is an entirely different thing, not implementing support for this s.
 
   local data
-  local fast
+  local fast=false
   local duration
   local return
 
   dc::logger::debug "$comprobe -show_format -show_error -show_data -show_streams  -print_format json \"$1\" 2>/dev/null)"
 
 
-  if ! data=$($comprobe -show_format -show_error -show_data -show_streams -print_format json "$1" 2>/dev/null) || [ "$(printf "%s" "$data" | jq -c .error)" != "null" ]; then
+  if ! data="$($comprobe -show_format -show_error -show_data -show_streams -print_format json "$1" 2>/dev/null)"; then
     # XXX review this to see what other info we should return (filesize?)
     dc::output::json "{\"file\":\"$1\"}"
+    dc::error::detail::set "$1"
     dc::logger::error "ffprobe is unable to analyze this file. Not a movie. Stopping here."
-    exit "$ERROR_FAILED"
+    exit "$ERROR_GENERIC_FAILURE"
   fi
 
-  if ! fast=$(mp4info --format json "$1" 2>/dev/null | jq -r -c .file.fast_start); then
+  if [ "$(printf "%s" "$data" | jq -r .error)" != "null" ]; then
+    dc::error::detail::set "$data"
+    dc::logger::error "ffprobe output is not valid json. Stopping here."
+    exit "$ERROR_GENERIC_FAILURE"
+  fi
+
+
+  local mp4infoisborked
+  if ! mp4infoisborked="$(mp4info --format json "$1" 2>/dev/null)"; then
     dc::logger::error "mp4info errored out or is not available. faststart information will be inaccurate."
     fast=false
   fi
 
-  # Grrrrrr
-  fast=${fast:-false}
-  [ "$fast" != "null" ] || fast=false
+  if ! fast=$(printf "%s" "$mp4infoisborked" | tr -d '\n' | sed -E 's/,[[:space:]]*}/}/g' | jq -r '.file | select(.fast_start != null).fast_start' 2>/dev/null); then
+    dc::logger::error "mp4info output is not valid json. faststart information will be inaccurate."
+    fast=false
+  fi
 
   duration=$(printf "%s" "$data" | jq '.format | select(.duration != null) | .duration | tonumber | floor')
   if [ ! "$duration" ]; then
