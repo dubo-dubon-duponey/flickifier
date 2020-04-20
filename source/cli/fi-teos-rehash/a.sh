@@ -10,26 +10,26 @@ fs::file::salvage(){
   printf "%s" "$info"
 }
 
-fs::file::extract::language() {
-  local file="$1"
+#xxxfs::file::extract::language() {
+#  local file="$1"
 
-  if dc::wrapped::grep -qi "([, ._(-]+|^)(eng[[(_-]?SDH.?|indonesian|persian|arabic|czech|bul|dan|srp|tur|rus|nor|hun|heb|hrv|fin|pol|est|jpn|cze|chinese|chinese-traditional|croatian|danish|dutch|english|french|german|greek|hebrew|italian|japanese|polish|ru|portuguese|russian|romanian|spanish|swedish|turkish|vietnamese|br|bra|chi|deu|de|dut|eng|en|esp|es|fra|fre|fr|ger|gre|hu|it|ita|nl|nwg|por|pt-br|ptb|ptbr|pt|ro|rum|spa|swe)[)]*\.+[a-z0-9]+" <<<"$file"; then
-    perl -C -Mutf8 -pe 's/(.+[, ._(-]+|^)(eng[[(_-]?SDH.?|indonesian|persian|arabic|czech|bul|dan|srp|tur|rus|nor|hun|heb|hrv|fin|pol|est|jpn|cze|chinese|chinese-traditional|croatian|danish|dutch|english|french|german|greek|hebrew|italian|japanese|polish|ru|portuguese|russian|romanian|spanish|swedish|turkish|vietnamese|br|bra|chi|deu|de|dut|eng|en|esp|es|fra|fre|fr|ger|gre|hu|it|ita|nl|nwg|por|pt-br|ptb|ptbr|pt|ro|rum|spa|swe)[)]*([.]+[a-z0-9]+)+/\2/i' <<<"$file" | tr '[:upper:]' '[:lower:]'
+#  if dc::wrapped::grep -qi "([, ._(-]+|^)(eng-forced|english-forced|eng[[(_ -]?SDH.?|english[[(_ -]?SDH.?|indonesian|persian|arabic|czech|bul|dan|srp|tur|rus|nor|hun|heb|hrv|fin|pol|est|jpn|cze|chinese|chinese-traditional|croatian|danish|dutch|english|french|german|greek|hebrew|italian|japanese|polish|ru|portuguese|russian|romanian|spanish|swedish|turkish|vietnamese|br|bra|chi|deu|de|dut|eng|en|esp|es|fra|fre|fr|ger|gre|hu|it|ita|nl|nwg|por|pt-br|ptb|ptbr|pt|ro|rum|spa|swe)[)]*\.+[a-z0-9]+" <<<"$file"; then
+#    perl -C -Mutf8 -pe 's/(.+[, ._(-]+|^)(eng-forced|english-forced|eng[[(_ -]?SDH.?|english[[(_ -]?SDH.?|indonesian|persian|arabic|czech|bul|dan|srp|tur|rus|nor|hun|heb|hrv|fin|pol|est|jpn|cze|chinese|chinese-traditional|croatian|danish|dutch|english|french|german|greek|hebrew|italian|japanese|polish|ru|portuguese|russian|romanian|spanish|swedish|turkish|vietnamese|br|bra|chi|deu|de|dut|eng|en|esp|es|fra|fre|fr|ger|gre|hu|it|ita|nl|nwg|por|pt-br|ptb|ptbr|pt|ro|rum|spa|swe)[)]*([.]+[a-z0-9]+)+/\2/i' <<<"$file" | tr '[:upper:]' '[:lower:]'
 #    perl -C -Mutf8 -pe 's/.+[, ._(-]+(eng[[(-]?SDH.?|czech|bul|dan|srp|tur|rus|nor|hun|heb|hrv|fin|pol|est|jpn|cze|chinese|chinese-traditional|croatian|danish|dutch|english|french|german|greek|hebrew|italian|japanese|polish|ru|portuguese|russian|romanian|spanish|swedish|turkish|vietnamese|br|bra|chi|deu|de|dut|eng|en|esp|es|fra|fre|fr|ger|gre|hu|it|ita|nl|nwg|por|pt-br|ptb|ptbr|pt|ro|rum|spa|swe)[)]*([.]+[a-z0-9]+)+/\1/i' <<<"$file" | tr '[:upper:]' '[:lower:]'
-  fi
-}
+#  fi
+#}
 
 fs::file::extract::suffix() {
   local file="$1"
 
   if dc::wrapped::grep -q ", part [0-9]" <<<"$file"; then
-    sed -E 's/.*, part ([0-9]).*/, part \1/' <<<"$file"
+    sed -E 's/.*, part[ ]*([0-9]).*/, part \1/' <<<"$file"
   fi
   if dc::wrapped::grep -q "[,. ]cd[ ]*[0-9]" <<<"$file"; then
     sed -E 's/.*[,. ]cd[ ]*([0-9]).*/, cd \1/' <<<"$file"
   fi
   if dc::wrapped::grep -q ", disc [0-9]" <<<"$file"; then
-    sed -E 's/.*, disc ([0-9]).*/, disc \1/' <<<"$file"
+    sed -E 's/.*, disc[ ]*([0-9]).*/, disc \1/' <<<"$file"
   fi
   if dc::wrapped::grep -q "[,]? E[0-9][0-9]" <<<"$file"; then
     sed -E 's/.*[,]? (E[0-9]+).*/, \1/' <<<"$file"
@@ -50,8 +50,11 @@ fs::file::extract::base() {
 
   file="$(sed -E 's/[.,_;!? -]+/  /g' <<<"$file")"
 
-  file="$(perl -C -Mutf8 -pe 's/[ ](aac|HD|Eng|Ita|AMZN|WEb DL|DDP2|NTG|Multi[ ]+Subs|ac3|Subs|Criterion|TrueHD|LPCM|flac|hdma|hevc|ddr|[0-9][ ]+[0-9]|blu-ray|x264|720p|BRRip|BluRay|DTS|WEB-DL|AAC5[ ]+1|5[ ]+1CH|5[ ]+1|H[ ]+264|DVDRip|XviD|EVO|HDRip|mkv|HDTV|1080p|mp4|multisubs|WebRip|Reenc|BDRip|DVD5|DVD)([ ]|$)/ /gi' <<<"$file")"
-  file="$(perl -C -Mutf8 -pe 's/(.+[ ]|^)(eng[[(_-]?SDH.?|indonesian|persian|arabic|czech|bul|dan|srp|tur|rus|nor|hun|heb|hrv|fin|pol|est|jpn|cze|chinese|chinese-traditional|croatian|danish|dutch|english|french|german|greek|hebrew|italian|japanese|polish|portuguese|russian|romanian|spanish|swedish|turkish|vietnamese|br|bra|chi|deu|de|dut|eng|en|esp|es|fra|fre|fr|ger|gre|hu|it|ita|nl|nwg|por|pt-br|ptb|ptbr|pt|ro|rum|spa|swe)([ ]|$)/\2/i' <<<"$file")"
+#  file="$(perl -C -Mutf8 -pe 's/[ ](aac|HD|Eng|Ita|AMZN|WEb DL|DDP2|NTG|Multi[ ]+Subs|ac3|Subs|Criterion|TrueHD|LPCM|flac|hdma|hevc|ddr|[0-9][ ]+[0-9]|blu-ray|x264|720p|BRRip|BluRay|DTS|WEB-DL|AAC5[ ]+1|5[ ]+1CH|5[ ]+1|H[ ]+264|DVDRip|XviD|EVO|HDRip|mkv|HDTV|1080p|mp4|multisubs|WebRip|Reenc|BDRip|DVD5|DVD)([ ]|$)/ /gi' <<<"$file")"
+#  file="$(perl -C -Mutf8 -pe 's/(.+[ ]|^)(eng-forced|english-forced|eng[[(_ -]?SDH.?|english[[(_ -]?SDH.?|indonesian|persian|arabic|czech|bul|dan|srp|tur|rus|nor|hun|heb|hrv|fin|pol|est|jpn|cze|chinese|chinese-traditional|croatian|danish|dutch|english|french|german|greek|hebrew|italian|japanese|polish|portuguese|russian|romanian|spanish|swedish|turkish|vietnamese|br|bra|chi|deu|de|dut|eng|en|esp|es|fra|fre|fr|ger|gre|hu|it|ita|nl|nwg|por|pt-br|ptb|ptbr|pt|ro|rum|spa|swe)([ ]|$)/\2/i' <<<"$file")"
+  file="$(scene::remove "$file")"
+  file="$(language::extract::rest "$file")"
+
 
   file="$(sed -E 's/[[:space:]]{2,}/ /g' <<<"$file")"
   file="$(sed -E 's/^[[:space:]]+//' <<<"$file" | sed -E 's/[[:space:]]+$//')"
@@ -63,7 +66,8 @@ fs::file::extract::base() {
 
 fs::file::isProtected() {
   local file="$1"
-  dc::wrapped::grep -q -I "^(Bonus|Sample$)" <<<"$file"
+  # XXX suboptimal
+  dc::wrapped::grep -qi "(^Bonus|Sample[.]|^Sample)" <<<"$file"
 }
 
 refactor::newfilename(){
@@ -94,7 +98,10 @@ refactor::newfilename(){
   suffix="$(fs::file::extract::suffix "$parent/$currentName")"
 
   if [ "$targetExtension" == "srt" ] || [ "$targetExtension" == "vob" ] || [ "$targetExtension" == "sub" ] || [ "$targetExtension" == "idx" ] || [ "$targetExtension" == "rar" ] || [ "$targetExtension" == "ass" ] || [ "$targetExtension" == "smi" ]; then
-    ln="$(fs::file::extract::language "$currentName")"
+    # ln="$(fs::file::extract::language "$currentName")"
+    ln="$(language::extract::lang "$currentName")"
+    qual="$(language::extract::qualifier "$currentName")"
+    [ ! "$qual" ] || ln="$ln $qual"
     [ ! "$ln" ] || ln=".$ln"
   fi
 
@@ -309,7 +316,8 @@ fs::file::recon() {
     #  echo "ERRORRRRRR"
     #  exit 1
     #}
-    language="$(fs::file::extract::language "$sfile")"
+    # language="$(fs::file::extract::language "$sfile")"
+    language="$(language::extract::lang "$sfile")"
     ;;
   "image")
     [ "$subtitle" == 0 ] || {
@@ -405,8 +413,11 @@ fs::dir::recon() {
   #  dc::logger::info "$obj"
   for i in "$obj"/*; do
     if [ ! -f "$i" ]; then
-      fs::dir::recon "$i" "$sep" "no rewrap"
-      sep=","
+      # XXX if the folder yields no file, this will fail
+      if ! dc::wrapped::grep -qi "^Bonus" <<<"$(basename "$i")"; then
+        fs::dir::recon "$i" "$sep" "no rewrap"
+        sep=","
+      fi
       continue
     fi
 

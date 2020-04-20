@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# dc::http::request "https://iso639-2.sil.org/sites/iso639-2/files/downloads/iso-639-2.tab" GET
+# dc::http::request "https://www.loc.gov/standards/iso639-2/ISO-639-2_utf-8.txt" GET
+
 true
 # shellcheck disable=SC2034
 readonly CLI_VERSION="0.1.0"
@@ -67,7 +70,7 @@ if ! dc::wrapped::grep -q "tt[0-9]{7}" <<<"$directory"; then
   imdbID="$(sed -E 's/<a href="\/title\/(tt[0-9]{7})\/" >.*/\1/' <<<"$result" | sed -E 's/([^<]*<[^>]+>)+[[:space:]]*//g' | sed -E 's/^[[:space:]]+//')"
   title="$(sed -E 's/<a href="\/title\/tt[0-9]{7}\/" >([^<]+).*/\1/' <<<"$result" | sed -E 's/([^<]*<[^>]+>)+[[:space:]]*//g' | sed -E 's/^[[:space:]]+//')"
   extra="$(sed -E 's/(<a href="\/title\/tt[0-9]{7}\/" >[^<]+<\/a>)([^<]+).*/\2/' <<<"$result" | sed -E 's/([^<]*<[^>]+>)+[[:space:]]*//g' | sed -E 's/^[[:space:]]+//' | sed -E 's/[[:space:]]+$//' | sed -E 's/.*[(]([0-9]{4})[)].*/\1/' )"
-  dc::logger::info "We found:" " > $title" " > $extra" " > $imdbID"
+  dc::logger::info "We found (from: \"$candidate\"):" " > $title" " > $extra" " > $imdbID"
   dc::prompt::confirm "Do you confirm this is right? Break now if not"
 fi
 
@@ -106,7 +109,7 @@ for i in $runtime; do
 
   # dc::logger::warning "Found a duration with less than 2 mins difference and less than 2% time difference overall. Best match so far, but continuing."
   matching="$totalDuration"
-  withDiff=" (~)"
+  withDiff=" ~"
 done
 
 
@@ -152,7 +155,7 @@ supplemental="$supplemental-$(printf "%s" "$nonBonusMovies" | jq -r -c '.[0].dat
 if [ "$imdbOriginal" == "$imdbTitle" ]; then
   imdbOriginal=
 else
-  imdbOriginal=" ($imdbOriginal)"
+  imdbOriginal=" [$imdbOriginal]"
 fi
 
 # printf "%s" "$renamableFiles"
