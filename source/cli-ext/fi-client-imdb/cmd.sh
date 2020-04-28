@@ -97,6 +97,8 @@ extractTechSpecs(){
     key=${techline%%"</td>"*}
     value=${techline#*"<td>"}
     value=${value%%"</td>"*}
+    # XXX need to escape double quotes
+    value="$(perl -pe "s/[\"]/\\\\\"/g" <<<"$value")"
     # XXX sed will introduce a trailing line feed
     key="$(printf "%s" "$key" | sed -E 's/[[:space:]]*$//' | sed -E 's/^[[:space:]]*//' | tr -d '\n' | tr '[:lower:]' '[:upper:]' | tr '[:space:]' '_')"
 
@@ -157,6 +159,9 @@ extractTechSpecs(){
 # Extract the specs
 heads="$(extractTechSpecs "$(printf "%s" "$body" | dc::wrapped::base64d | tr -d '\n')")"
 
+#    echo ">$heads<"
+
+dc::logger::debug "$heads"
 #echo ">$IMDB_YEAR<"
 #echo ">$IMDB_TITLE<"
 #echo ">$IMDB_TYPE<"
