@@ -1,4 +1,13 @@
 _dc::iso::639-2::boot() {
+  # These are too problematic
+  local blacklist="day|||Land Dayak languages|dayak, langues
+iii||ii|Sichuan Yi; Nuosu|yi de Sichuan
+man|||Mandingo|mandingue
+men|||Mende|mendé
+smi|||Sami languages|sames, langues
+inc|||Indic languages|indo-aryennes, langues
+"
+
   local list="aar||aa|Afar|afar
 abk||ab|Abkhazian|abkhaze
 ace|||Achinese|aceh
@@ -104,7 +113,6 @@ cze|ces|cs|Czech|tchèque
 dak|||Dakota|dakota
 dan||da|Danish|danois
 dar|||Dargwa|dargwa
-day|||Land Dayak languages|dayak, langues
 del|||Delaware|delaware
 den|||Slave (Athapascan)|esclave (athapascan)
 dgr|||Dogrib|dogrib
@@ -188,13 +196,11 @@ iba|||Iban|iban
 ibo||ig|Igbo|igbo
 ice|isl|is|Icelandic|islandais
 ido||io|Ido|ido
-iii||ii|Sichuan Yi; Nuosu|yi de Sichuan
 ijo|||Ijo languages|ijo, langues
 iku||iu|Inuktitut|inuktitut
 ile||ie|Interlingue; Occidental|interlingue
 ilo|||Iloko|ilocano
 ina||ia|Interlingua (International Auxiliary Language Association)|interlingua (langue auxiliaire internationale)
-inc|||Indic languages|indo-aryennes, langues
 ind||id|Indonesian|indonésien
 ine|||Indo-European languages|indo-européennes, langues
 inh|||Ingush|ingouche
@@ -268,7 +274,6 @@ mah||mh|Marshallese|marshall
 mai|||Maithili|maithili
 mak|||Makasar|makassar
 mal||ml|Malayalam|malayalam
-man|||Mandingo|mandingue
 mao|mri|mi|Maori|maori
 map|||Austronesian languages|austronésiennes, langues
 mar||mr|Marathi|marathe
@@ -276,7 +281,6 @@ mas|||Masai|massaï
 may|msa|ms|Malay|malais
 mdf|||Moksha|moksa
 mdr|||Mandar|mandar
-men|||Mende|mendé
 mga|||Irish, Middle (900-1200)|irlandais moyen (900-1200)
 mic|||Mi'kmaq; Micmac|mi'kmaq; micmac
 min|||Minangkabau|minangkabau
@@ -388,7 +392,6 @@ slo|slk|sk|Slovak|slovaque
 slv||sl|Slovenian|slovène
 sma|||Southern Sami|sami du Sud
 sme||se|Northern Sami|sami du Nord
-smi|||Sami languages|sames, langues
 smj|||Lule Sami|sami de Lule
 smn|||Inari Sami|sami d'Inari
 smo||sm|Samoan|samoan
@@ -521,6 +524,8 @@ TRK|||Turkish|"
   # Seen in the wild
   echo "chinese[- _]traditional"
   echo "chinese[- _]simplified"
+  echo "pt[-]?br"
+  echo "nwg"
 }
 
 _DC_PRIVATE_ISO639_2=""
@@ -545,9 +550,12 @@ dc::iso::639-2::regexp(){
 
 dc::iso::639-2::regexp > /dev/null
 
-_DC_PRIVATE_SUB_OPEN='.*([\[\(. -]+|^)'
+#_DC_PRIVATE_SUB_OPEN='.*([\[\(. -]+|^)'
+# XXX space is a liability and will mangle legit titles
+_DC_PRIVATE_SUB_OPEN='.*([\[\(._,-]+[ ]*|^)'
 _DC_PRIVATE_SUB_QUAL="([\[\(. -]+(sdh|forced))?"
-_DC_PRIVATE_SUB_CLOSE='[\]\). -]*[.][a-z0-9]+'
+_DC_PRIVATE_SUB_CLOSE='[\]\). -]*(([.][a-z0-9]+)+|$)'
+
 
 # iso::639-2::regexp
 language::extract::lang(){

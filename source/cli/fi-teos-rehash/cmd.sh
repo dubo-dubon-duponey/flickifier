@@ -18,7 +18,7 @@ dc::commander::declare::arg 1 ".+" "directory" "the directory to analyze. The na
 dc::commander::boot
 
 # Requirements
-dc::require fi-client-imdb
+dc::require flck-meta
 dc::require fi-movie-info
 
 # Force to info for now
@@ -54,28 +54,42 @@ for i in $duration; do
 done
 
 # Extract id from directory
-imdbID="$(printf "%s" "$directory" | sed -E 's/.*(tt[0-9]{7})(.*|$)/\1/')"
+imdbID="$(printf "%s" "$directory" | perl -pe 's/.*(tt[0-9]{7,})(.*|$)/\1/')"
 
-if ! dc::wrapped::grep -q "tt[0-9]{7}" <<<"$directory"; then
-  candidate="$(jq -r '.[0].base' <<<"$nonBonusMovies" | sed -E 's/(.*)([(].*)$/\1/')"
-  candidate="$(dc::encoding::uriencode "$candidate")"
-  result="$(dc::http::request "https://www.imdb.com/find?q=$candidate&s=tt&ref_=fn_tt" GET)"
-  while ! dc::wrapped::grep -q '<table class="findList">' <<<"$result"; do
-    dc::logger::error "No matching findlist for $(jq -r '.[0].base' <<<"$nonBonusMovies")"
-    dc::prompt::question "Try again with another search:" newsearch
-    candidate="$(dc::encoding::uriencode "$newsearch")"
-    result="$(dc::http::request "https://www.imdb.com/find?q=$candidate&s=tt&ref_=fn_tt" GET)"
+if ! dc::wrapped::grep -q "tt[0-9]{7,}" <<<"$directory"; then
+  candidate="$(jq -r '.[0].base' <<<"$nonBonusMovies" | perl -pe 's/(.*)([(].*)$/\1/')"
+
+  confirm=""
+  while [ "$confirm" != "y" ]; do
+    args=(flck-meta)
+    year=""
+    if dc::wrapped::grep -q "[0-9]{4}$" <<<"$candidate"; then
+      year="$(perl -pe 's/.* ([0-9]{4})$/\1/' <<<"$candidate")"
+      args+=(--year="$year")
+      candidate="$(perl -pe 's/[ ]+[0-9]{4}$//' <<<"$candidate")"
+    fi
+    args+=("$candidate")
+
+    result="$("${args[@]}")"
+
+    length="$(jq length <<<"$result")"
+
+    for (( i=0; i<length; i++ )); do
+      [ "$i" -lt 3 ] || break
+      jq ".[$i]" <<<"$result"
+      dc::prompt::question "Is this ^ what you were looking for? Type 'y' if yes, leave empty otherwise for more results: " confirm
+      [ "$confirm" != "y" ] || break
+    done
+    if [ "$confirm" != "y" ]; then
+      dc::prompt::question "Provide a title to search for, optionnally followed by a release date: " candidate
+    fi
   done
-  result=$(printf "%s" "$result" | tr '\n' ' ' | sed -E 's/.*<table class="findList">(.*)<\/table>.*/\1/')
-  imdbID="$(sed -E 's/<a href="\/title\/(tt[0-9]{7})\/" >.*/\1/' <<<"$result" | sed -E 's/([^<]*<[^>]+>)+[[:space:]]*//g' | sed -E 's/^[[:space:]]+//')"
-  title="$(sed -E 's/<a href="\/title\/tt[0-9]{7}\/" >([^<]+).*/\1/' <<<"$result" | sed -E 's/([^<]*<[^>]+>)+[[:space:]]*//g' | sed -E 's/^[[:space:]]+//')"
-  extra="$(sed -E 's/(<a href="\/title\/tt[0-9]{7}\/" >[^<]+<\/a>)([^<]+).*/\2/' <<<"$result" | sed -E 's/([^<]*<[^>]+>)+[[:space:]]*//g' | sed -E 's/^[[:space:]]+//' | sed -E 's/[[:space:]]+$//' | sed -E 's/.*[(]([0-9]{4})[)].*/\1/' )"
-  dc::logger::info "We found (from: \"$candidate\"):" " > $title" " > $extra" " > $imdbID"
-  dc::prompt::confirm "Do you confirm this is right? Break now if not"
+
+  imdbID="$(jq -rc ".[$i].id" <<<"$result")"
 fi
 
 # Fetch data
-if ! imdb=$(fi-client-imdb "$imdbID"); then
+if ! imdb=$(flck-meta "$imdbID"); then
   dc::logger::error "Could not retrieve information from imdb for id $imdbID and directory $directory. Aborting!"
   exit "$ERROR_GENERIC_FAILURE"
 fi
@@ -89,7 +103,7 @@ runtime=$(sed -E 's/([0-9]+).*/\1/g' <<<"$imdbRuntime")
 # XXX limit this to 200 characters? This is weak - better do a limitation on the total path instead
 imdbRuntime="$(printf "%s" "$imdbRuntime" | tr '\n' '|')"
 if [ "${#imdbRuntime}" -gt 100 ]; then
-  imdbRuntime="${imdbRuntime:1:100}..."
+  imdbRuntime="${imdbRuntime:0:100}..."
 fi
 
 withDiff=" KO"
@@ -103,7 +117,7 @@ for i in $runtime; do
     withDiff=""
     break
   fi
-  if { [ "$delta" -gt 2 ] || [ "$delta" -lt -2 ]; } || { [ "$jitter" -gt 4 ] || [ "$jitter" -lt -4 ]; }; then
+  if { [ "$delta" -gt 2 ] || [ "$delta" -lt -2 ]; } || { [ "$jitter" -gt 10 ] || [ "$jitter" -lt -10 ]; }; then
     continue
   fi
 
@@ -145,7 +159,19 @@ elif [ "$w" -le 1280 ]; then
 fi
 
 
-# printf "%s" "$nonBonusMovies"
+# Does it have parts?
+parts="$(jq -rc '.parts | . as $in| keys[] | $in[.] | .[]' <<<"$imdb")"
+seasons="$(jq -rc '.parts | [. as $in| keys[]]' <<<"$imdb")"
+nbseasons="$(jq -rc '.parts | [. as $in| keys[]] | length' <<<"$imdb")"
+nbparts="$(jq -rc '.parts | [. as $in| keys[] | $in[.] | .[].id] | length' <<<"$imdb")" #  | wc -l
+nbparts="${nbparts#* }"
+if [ "$nbparts" != "0" ]; then
+  nbnb="$(jq length <<<"$nonBonusMovies")"
+  if [ "$nbparts" != "$nbnb" ]; then
+    dc::logger::error "WO. Stop here. We have a tvshow here (with $nbparts episodes), but you don't have the right number of episodes to match ($nbnb). We'll try our best, but this is likely missing content."
+    # exit 1
+  fi
+fi
 
 density="$(jq -rc '.[0].density' <<<"$nonBonusMovies")"
 supplemental="$c-${w}x${h}"
@@ -161,8 +187,41 @@ fi
 # printf "%s" "$renamableFiles"
 total=$(jq -rc '. | length' <<<"$renamableFiles")
 for (( i=0; i<$total; i++ )); do
-  refactor::newfilename "$imdbTitle" "$(jq -rc ".[$i]" <<<"$renamableFiles")"
+  # Analyze suffix
+  suf="$(jq -rc ".[$i].suffix" <<<"$renamableFiles")"
+  ep="$(perl -pe 's/[^0-9]+(S[0]?([0-9]+))?EP?[0]?([0-9]+)/\3/i' <<<"$suf")"
+  se="$(perl -pe 's/[^0-9]+(S[0]?([0-9]+))?EP?[0]?([0-9]+)/\2/i' <<<"$suf")"
+  # No season? Default to default season then
+  if [ ! "$se" ]; then
+    se="1"
+  fi
+  dot="$(jq -rc ".[$i]" <<<"$renamableFiles")"
+  if [ "$ep" ] && [ "$nbparts" != "0" ]; then
+    echo "suffix currently is: $suf"
+    echo "got $nbparts parts advertised and this file has an ep marker: $ep - for season $se - parts below"
+    jq -rc ".parts" <<<"$imdb"
+#    echo "---"
+#    echo "suffix: $suf"
+#    echo "season: $se"
+#    echo "episode: $ep"
+#    echo "parts: $parts"
+    that="$(jq ".parts.\"$se\" | .[] | select(.number == \"$ep\")" <<<"$imdb")"
+    suffix=", S$(printf "%02d" "${se}")E$(printf "%02d" "${ep}") $(jq -rc .title <<<"$that") [$(jq -rc .id <<<"$that")]"
+    dot="$(jq --arg suffix "$suffix" '. + {suffix: $suffix}' <<<"$dot")"
+#    dc::output::json "$dot"
+#    echo "---"
+  fi
+
+  refactor::newfilename "$imdbTitle" "$dot"
 done
+
+
+#echo "-----------------"
+tp="$(jq -rc .type <<<"$imdb")"
+if [ "$tp" != "Movie" ]; then
+  dc::logger::error "This is NOT a movie - inspect"
+fi
+# echo "-----------------"
 
 refactor::newdirname "$parent" "$directory" "$imdbID" "$imdbYear" "$imdbTitle$imdbOriginal" "$matching$withDiff ($imdbRuntime)" "$supplemental"
 

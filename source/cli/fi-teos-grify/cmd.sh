@@ -19,11 +19,11 @@ dc::require jq
 dc::require fi-movie-info
 dc::require fi-movie-grify
 
-dc::logger::info "Analyzing $DC_PARGV_1"
+dc::logger::info "Analyzing $DC_ARG_1"
 
-if ! data="$(fi-movie-info -s "$DC_PARGV_1")"; then
+if ! data="$(fi-movie-info -s "$DC_ARG_1")"; then
   dc::logger::error " > Media info analysis failed. Exiting."
-  exit "$ERROR_FAILED"
+  exit "$ERROR_GENERIC_FAILURE"
 fi
 
 dc::logger::debug "$data"
@@ -36,13 +36,14 @@ CONTAINER=$(printf "%s" "$data" | jq -r .container)
 FAST=$(printf "%s" "$data" | jq -r .fast)
 DURATION=$(printf "%s" "$data" | jq -r .duration)
 
-if [ "$DURATION" == "0" ]; then
-  dc::logger::error " > No duration! Exiting."
-  exit "$ERROR_FAILED"
-fi
+# XXX some broken but recoverable videos do not have duration - not a viable way to detect non video streams
+#if [ "$DURATION" == "0" ]; then
+#  dc::logger::error " > No duration! Exiting."
+#  exit "$ERROR_GENERIC_FAILURE"
+#fi
 
 ALL_VIDEO_COUNT=$(printf "%s" "$data" | jq -r '.video | length')
-REQUIRED_VIDEO_COUNT=$(printf "%s" "$data" | jq -r '[.video[] | select(.codec == "h264")] | length')
+REQUIRED_VIDEO_COUNT=$(printf "%s" "$data" | jq -r '[.video[] | select(.codec == "h264" or .codec == "hevc") ] | length')
 
 # "All audio" count
 ALL_AUDIO_COUNT=$(printf "%s" "$data" | jq -r '.audio | length')
@@ -78,17 +79,17 @@ dc::output::json "$data"
 
 if [ "$ALL_VIDEO_COUNT" == "0" ]; then
   dc::logger::error " > No video? Exiting!"
-  exit "$ERROR_FAILED"
+  exit "$ERROR_GENERIC_FAILURE"
 fi
 
 if [ "$ALL_VIDEO_COUNT" -ge 2 ]; then
   dc::logger::error " > More than one video stream? Exiting!"
-  exit "$ERROR_FAILED"
+  exit "$ERROR_GENERIC_FAILURE"
 fi
 
 if [ "$REQUIRED_VIDEO_COUNT" == 0 ]; then
   dc::logger::error " > The video stream is not h264. Re-encoding would be the only option (unsupported for now). Exiting"
-  exit "$ERROR_FAILED"
+  exit "$ERROR_GENERIC_FAILURE"
 fi
 
 # Comments on weird stuff...
@@ -102,6 +103,7 @@ fi
 
 # Investigate audio
 # Unusable audio streams will be removed anyway. The one case we want to cover here is multiple valid required audio streams
+REMOVE_AUDIO=""
 if [ "$REQUIRED_AUDIO_COUNT" -ge 2 ]; then
   dc::logger::warning " > Multi (AAC or AC3) audio here. This is usually just a waste of space."
   dc::prompt::question "Which one(s) do you want to remove (space separated ID list), out of '$REQUIRED_AUDIO_SHOW'? [leave empty for none] " REMOVE_AUDIO
@@ -126,20 +128,21 @@ if [ "$FAST" != "true" ]; then
   OPTIMIZE=true
 fi
 
+MUST_CONVERT_AUDIO=""
 if [ "$REQUIRED_AUDIO_COUNT" == 0 ] && [ "$ALL_AUDIO_COUNT" != 0 ]; then
   dc::logger::warning " > There is no required (AAC, AC-3) audio stream in there. We shall create one."
   MUST_CONVERT_AUDIO="$MAY_CONVERT_AUDIO"
   if [ "$MAY_CONVERT_AUDIO_COUNT" -ge 2 ]; then
-    dc::prompt::question " > There are more than one audio stream to convert from. \
-    Since none of them are compatible, they will all be removed, and one of them will be converted to AAC.\
+    dc::prompt::question " > There are more than one audio stream to convert from.
+    Since none of them are compatible, they will all be removed, and one of them will be converted to AAC.
     Please pick the id of the one to be converted out of: $MAY_CONVERT_AUDIO_SHOW" MUST_CONVERT_AUDIO
     if [ ! "$MUST_CONVERT_AUDIO" ]; then
       dc::logger::error "Hey! We asked a question!"
-      exit "$ERROR_FAILED"
+      exit "$ERROR_GENERIC_FAILURE"
     fi
     if [ "$(printf "%s" "$data" | jq -r --arg id "$MUST_CONVERT_AUDIO" '.audio | select(.id == $id) | length')" == 0 ]; then
       dc::logger::error "Wrrooooonnng!"
-      exit "$ERROR_FAILED"
+      exit "$ERROR_GENERIC_FAILURE"
     fi
   else
     MUST_CONVERT_AUDIO=$(printf "%s" "$MAY_CONVERT_AUDIO" | jq -r -c '.[] | (.id | tostring)')
@@ -150,18 +153,20 @@ fi
 
 # XXX EXTRA CAREFUL HERE
 # EXTRACT=( $(echo "$ALL_SUBTITLES" | jq -r -c '.[] | select(.codec == "dvd_subtitle"|not) | (.id|tostring) + ":" + (.id|tostring) + "." + .language + "." + .codec' | sed -E 's/subrip/srt/g' | sed -E 's/microdvd/sub/g' | sed -E 's/sami/smi/g' | sed -E 's/mov_text/srt/g') )
+EXTRACT=()
 while read -r i; do
-  EXTRACT[${#EXTRACT[@]}]="$i"
+#  EXTRACT[${#EXTRACT[@]}]="$i"
+  EXTRACT+=("$i")
 done < <(printf "%s" "$ALL_SUBTITLES" | jq -r -c '.[] | select(.codec == "dvd_subtitle"|not) | (.id|tostring) + ":" + (.id|tostring) + "." + .language + "." + .codec' \
   | sed -E 's/subrip/srt/g' | sed -E 's/microdvd/sub/g' | sed -E 's/sami/smi/g' | sed -E 's/mov_text/srt/g')
-
 
 
 ALERT_SUBS=$(printf "%s" "$ALL_SUBTITLES" | jq -r -c '[.[] | select(.codec == "dvd_subtitle")] | length')
 # EXTRACT=( $(echo $ALL_SUBTITLES | jq -r -c '.[] | (.id | tostring)') )
 
 if [ "$ALERT_SUBS" -ge 1 ]; then
-  dc::logger::error " > This file contains unprocessable subtitles that will get dropped. You should extract out of band with mkvextract tracks \"$DC_PARGV_1\" X:\"$DC_PARGV_1\""
+  dc::logger::error " > This file contains unprocessable subtitles that will get dropped. You should extract out of band with mkvextract tracks \"$DC_ARG_1\" X:\"$DC_ARG_1\""
+  # mkvextract "/Users/dmp/Movies/Jolly Dumper/problem/fqn/Fanny and Alexander, E04.mkv" tracks -f 2:"/Users/dmp/Movies/Jolly Dumper/problem/fqn/Fanny and Alexander, E04.sub"
   dc::logger::warning " > Press enter to continue (warning again: this sub WILL BE REMOVED)"
   dc::prompt::confirm
 fi
@@ -199,15 +204,27 @@ if [ "${ALSO_REMOVE[*]}" ]; then
   # XXX dirty hack to still extract them
   # XXX
   #for i in ${ALSO_REMOVE[@]}; do
-  #  echo mkvextract tracks "$DC_PARGV_1" $i:"$DC_PARGV_1.srt"
-  #  echo $(mkvextract tracks "$DC_PARGV_1" $i:"$DC_PARGV_1.srt")
+  #  echo mkvextract tracks "$DC_ARG_1" $i:"$DC_ARG_1.srt"
+  #  echo $(mkvextract tracks "$DC_ARG_1" $i:"$DC_ARG_1.srt")
   #done
 fi
 
 CONVERT=$MUST_CONVERT_AUDIO
 
 if [ "$CONTAIN" ] || [ "$OPTIMIZE" ] || [ "$CONVERT" ] || [ "$REMOVE" ] || [ "${EXTRACT[*]}" ]; then
-  fi-movie-grify --destination="$DC_ARGV_DESTINATION" --convert="$CONVERT" --remove="$REMOVE" --extract="${EXTRACT[*]}" "$DC_PARGV_1"
+  args=()
+  [ ! "${DC_ARG_DESTINATION:-}" ] || args+=(--destination="${DC_ARG_DESTINATION:-}")
+  [ ! "$CONVERT" ] || args+=(--convert="$CONVERT")
+  [ ! "$REMOVE" ] || args+=(--remove="$REMOVE")
+  [ ! "${EXTRACT[*]:-}" ] || args+=(--extract="${EXTRACT[*]:-}")
+  args+=("$DC_ARG_1")
+#  fi-movie-grify --destination="${DC_ARG_DESTINATION:-}" --convert="$CONVERT" --remove="$REMOVE" --extract="${EXTRACT[*]:-}" "$DC_ARG_1"
+
+  dc::logger::info "fi-movie-grify ${args[*]}"
+  dc::logger::info "Confirm?"
+  dc::prompt::confirm
+
+  fi-movie-grify "${args[@]}"
   dc::logger::info " > Done"
   # dc::prompt::confirm
 else

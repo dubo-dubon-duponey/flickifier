@@ -71,7 +71,7 @@ $(DC_PREFIX)/bin/%: $(DC_PREFIX)/lib/lib-flickifier $(DC_MAKEFILE_DIR)/source/cl
 	$(call footer, $@)
 
 # Builds all the CLIs that depend on the main library and extensions
-$(DC_PREFIX)/bin/%: $(DC_PREFIX)/lib/lib-flickifier $(DC_PREFIX)/bin/tooling/lib/lib-dc-sh-art-extensions $(DC_MAKEFILE_DIR)/source/cli-ext/%
+$(DC_PREFIX)/bin/%: $(DC_PREFIX)/bin/tooling/lib/lib-dc-sh-art $(DC_PREFIX)/bin/tooling/lib/lib-dc-sh-art-extensions $(DC_MAKEFILE_DIR)/source/core/*.sh $(DC_MAKEFILE_DIR)/source/cli-ext/%
 	$(call title, $@)
 	$(DC_PREFIX)/bin/tooling/bin/dc-tooling-build --destination="$(shell dirname $@)" --name="$(shell basename $@)" --license="MIT License" --author="dubo-dubon-duponey" --description="another fancy piece of shcript" $^
 	$(call footer, $@)

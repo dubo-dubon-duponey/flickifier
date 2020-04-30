@@ -59,12 +59,17 @@ testIso639(){
   _test "foo.Eng[(-sdh].srt" "eng" "sdh" "foo"
   _test "foo.English-sdh.srt" "english" "sdh" "foo"
 
+  _test "Big Trouble in Little China.ita.srt.srt" "ita" "" "Big Trouble in Little China"
+  _test "Training Day.srt" "" "" "Training Day.srt"
+
+  _test "Training_eng.srt" "eng" "" "Training"
+  _test "Searching for Sugar Man" "man" "" "Searching for Sugar"
 
   dc-tools::assert::equal "" "movie" "$(scene::remove "movie h264 webdl.mp4")"
 
 }
 
-testBrute(){
+xtestBrute(){
   while read -r line; do
     ln="$(language::extract::lang "$(basename "$line")")"
     if [ ! "$ln" ]; then

@@ -31,7 +31,7 @@ flck::requestor::imdb::search::title() {
   local question="$1"
   local year="${2:-}"
 
-  [ ! "$year" ] || year="&release_date=$year-01-01,$year-12-01"
+  [ ! "$year" ] || year="&release_date=$year-01-01,$year-12-31"
 
   local response
   local line
@@ -52,12 +52,12 @@ flck::requestor::imdb::search::title() {
 
     printf "%s{" "$sep"
 
-    perl -pe 's/.*<a href="\/title\/(tt[0-9]{7})[^>]+>[^<]*<img alt="([^"]+)[^>]*loadlate="([^"]+).*/"id": "\1", "title": "\2", "picture": "\3",/' <<<"$line"
+    perl -pe 's/.*<a href="\/title\/(tt[0-9]{7,})[^>]+>[^<]*<img alt="([^"]+)[^>]*loadlate="([^"]+).*/"id": "\1", "title": "\2", "picture": "\3",/' <<<"$line"
 
     year="$(perl -pe 's/.*<span class="lister-item-year text-muted unbold">([^<]*[(]([0-9]*)[^)]*[)])?.*/\2/' <<<"$line")"
     printf '"year": "%s",' "$year"
 
-    ! dc::wrapped::grep -q 'Director: ' <<<"$line" || director="$(perl -pe 's/.*Director: <a href="\/name\/(nm[0-9]{7})[^>]+>([^<]*).*/\2/' <<<"$line")"
+    ! dc::wrapped::grep -q 'Director: ' <<<"$line" || director="$(perl -pe 's/.*Director: <a href="\/name\/(nm[0-9]{7,})[^>]+>([^<]*).*/\2/' <<<"$line")"
     printf '"director": "%s",' "$director"
 
     ! dc::wrapped::grep -q '<span class="runtime">' <<<"$line" || {
@@ -101,7 +101,7 @@ flck::requestor::imdb::search::name() {
       perl -pe 's/.*<p class="text-muted text-small">[ ]*([^<]+)[ ]*<span class="ghost">[|]<\/span>[^<]*<a[^>]+>[ ]*([^<]+).*/"known": "\1 \2",/' <<<"$line"
     }
 
-    perl -pe 's/.*<a href="\/name\/(nm[0-9]{7})[^>]*>[^<]*<img alt="([^"]+)[^>]*src="([^"]+).*/"id": "\1", "name": "\2", "picture": "\3"/' <<<"$line"
+    perl -pe 's/.*<a href="\/name\/(nm[0-9]{7,})[^>]*>[^<]*<img alt="([^"]+)[^>]*src="([^"]+).*/"id": "\1", "name": "\2", "picture": "\3"/' <<<"$line"
 
     printf "}"
     sep=","
@@ -222,9 +222,19 @@ flck::requestor::imdb::get::title::episodes() {
   response="$(flck::requestor::imdb "title/$identifier/episodes?season=$season")"
 
   # Episodes are not &quot protected
-  episodes="$(perl -pe "s/\/title\/(tt[0-9]{7})\/[?]ref_=ttep_ep([0-9]+)[^>]+title=\"([^\"]+)\" itemprop=\"name\"/\n,{\"id\": \"\1\", \"number\": \"\2\", \"title\": \"\3\"}\n/g" <<<"$response" | dc::wrapped::grep -E "^,{\"id\"")"
+#  episodes="$(perl -pe "s/\/title\/(tt[0-9]{7,})\/[?]ref_=ttep_ep([0-9]+)[^>]+title=\"([^\"]+)\" itemprop=\"name\"/\n,{\"id\": \"\1\", \"number\": \"\2\", \"title\": \"\3\"}\n/g" <<<"$response" | dc::wrapped::grep -E "^,{\"id\"")"
 
-  printf "[%s]" "$(perl -pe "s/&quot;/\\\\\"/"<<<"${episodes:1}")"
+  printf "["
+  local sep=""
+  while read -r item; do
+    episodes="$(perl -pe "s/.*itemprop=\"episodeNumber\" content=\"([^\"]+).*\/title\/(tt[0-9]{7,})[^>]+title=\"([^\"]+)\" itemprop=\"name\"/\n{\"id\": \"\2\", \"number\": \"\1\", \"title\": \"\3\"}\n/g" <<<"$item" | dc::wrapped::grep "^{\"id\"")"
+#    if [ "$episodes" ]; then
+      printf "%s%s" "$sep" "$(perl -pe "s/&quot;/\\\\\"/"<<<"$episodes")"
+      sep=","
+#    fi
+  done < <(perl -pe 's/(<div class="info" itemprop="episodes")/\n\1/g' <<<"$response" | dc::wrapped::grep '^<div class="info" itemprop="episodes"' )
+  #
+  printf "]"
 }
 
 flck::requestor::imdb::get::title() {
@@ -353,7 +363,7 @@ flck::requestor::imdb::get::name() {
   schema_type="$(jq -r '."@type"' <<<"$schema")"
 
   # Break on the various credit types: writer, director, producer, soundtrack, sound_department, visual_effects, editorial_department, cinematographer, editor, composer, actor, self, etc
-  parts="$(perl -pe 's/(<div id="filmo-head)/\n\1/g' <<<"$response" | dc::wrapped::grep "^<div id=\"filmo-head-$as\"" | perl -pe 's/<b><a href="\/title\/(tt[0-9]{7})[^>]*>([^<]+)/\n,{"id": "\1", "title": "\2"}\n/g' | dc::wrapped::grep "^,{\"id\":")"
+  parts="$(perl -pe 's/(<div id="filmo-head)/\n\1/g' <<<"$response" | dc::wrapped::grep "^<div id=\"filmo-head-$as\"" | perl -pe 's/<b><a href="\/title\/(tt[0-9]{7,})[^>]*>([^<]+)/\n,{"id": "\1", "title": "\2"}\n/g' | dc::wrapped::grep "^,{\"id\":")"
 
 #  echo "["${parts:1}"]"
 

@@ -43,14 +43,13 @@ dc-ext::http-cache::init
 
 op="search"
 type="${DC_ARG_TYPE:-title}"
-if dc::argument::check DC_ARG_1 "^tt[0-9]{7}"; then
+if dc::argument::check DC_ARG_1 "^tt[0-9]{7,}"; then
   op="get"
   type="title"
-elif dc::argument::check DC_ARG_1 "^nm[0-9]{7}"; then
+elif dc::argument::check DC_ARG_1 "^nm[0-9]{7,}"; then
   op="get"
   type="person"
 fi
-
 
 case "$op" in
   "search")

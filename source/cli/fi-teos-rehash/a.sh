@@ -22,17 +22,21 @@ fs::file::salvage(){
 fs::file::extract::suffix() {
   local file="$1"
 
-  if dc::wrapped::grep -q ", part [0-9]" <<<"$file"; then
-    sed -E 's/.*, part[ ]*([0-9]).*/, part \1/' <<<"$file"
+  if dc::wrapped::grep -qi "[,. ]part[ ]*[0-9]+" <<<"$file"; then
+    perl -pe 's/.*[,. ]part[ ]*([0-9]+).*/, E\1/i' <<<"$file"
   fi
-  if dc::wrapped::grep -q "[,. ]cd[ ]*[0-9]" <<<"$file"; then
-    sed -E 's/.*[,. ]cd[ ]*([0-9]).*/, cd \1/' <<<"$file"
+  if dc::wrapped::grep -qi "[,. ]cd[ ]*[0-9]+" <<<"$file"; then
+    perl -pe 's/.*[,. ]cd[ ]*([0-9]+).*/, E\1/i' <<<"$file"
   fi
-  if dc::wrapped::grep -q ", disc [0-9]" <<<"$file"; then
-    sed -E 's/.*, disc[ ]*([0-9]).*/, disc \1/' <<<"$file"
+  if dc::wrapped::grep -qi "[,. ]disc[ ]*[0-9]+" <<<"$file"; then
+    perl -pe 's/.*[,. ]disc[ ]*([0-9]+).*/, E\1/i' <<<"$file"
   fi
-  if dc::wrapped::grep -q "[,]? E[0-9][0-9]" <<<"$file"; then
-    sed -E 's/.*[,]? (E[0-9]+).*/, \1/' <<<"$file"
+  if dc::wrapped::grep -qi "(^|.*[ .,_-])season[ .,_-]*[0-9]+[ .,_-]*episode[ .,_-]*[0-9]+" <<<"$file"; then
+    perl -pe 's/(^|.*[ .,_-])season[ .,_-]*([0-9]+)[ .,_-]*episode[ .,_-]*([0-9]+).*/, S\2E\3/i' <<<"$file"
+  fi
+
+  if dc::wrapped::grep -qi "^(.*[ .,_-]+)?(S[0-9]+)?[ .,_-]*EP?[0-9]+" <<<"$file"; then
+    perl -pe 's/^(.*[ .,_-]+)?(S[0-9]+)?[ .,_-]*(EP?[0-9]+).*/, \2\3/i' <<<"$file"
   fi
 }
 
@@ -76,6 +80,7 @@ refactor::newfilename(){
 
   local file
   local currentName
+  local newname
   local parent
   local ln=""
   local suffix=""
@@ -95,7 +100,8 @@ refactor::newfilename(){
     >&2 dc::output::json "$data"
   }
 
-  suffix="$(fs::file::extract::suffix "$parent/$currentName")"
+  # suffix="$(fs::file::extract::suffix "$parent/$currentName")"
+  suffix="$(jq -rc ".suffix" <<<"$data")"
 
   if [ "$targetExtension" == "srt" ] || [ "$targetExtension" == "vob" ] || [ "$targetExtension" == "sub" ] || [ "$targetExtension" == "idx" ] || [ "$targetExtension" == "rar" ] || [ "$targetExtension" == "ass" ] || [ "$targetExtension" == "smi" ]; then
     # ln="$(fs::file::extract::language "$currentName")"
@@ -108,6 +114,7 @@ refactor::newfilename(){
   newname="$targetBase$suffix$ln.$targetExtension"
   newname="$(iconv -f utf8 -t ascii//TRANSLIT <<<"$newname")"
   newname="$(sed -E 's/\//_/g' <<<"$newname")"
+  [ "${newname:0:1}" != "." ] || newname="_$newname"
 
   if [ "$newname" != "$currentName" ]; then
     dc::logger::warning "     < $currentName"
@@ -168,6 +175,12 @@ fs::file::recon() {
       "HTML document text")
         type="document"
         extension="html"
+        protected=true
+        container="bypass"
+      ;;
+      "Composite Document File V2 Document")
+        type="document"
+        extension="doc"
         protected=true
         container="bypass"
       ;;
@@ -255,6 +268,12 @@ fs::file::recon() {
     type="image"
     ;;
 
+    # Audio
+  "mp3")
+    extension="mp3"
+    type="sound"
+    protected=true
+    ;;
     # Movies
   "matroska,webm")
     type="movie"
@@ -369,6 +388,7 @@ fs::file::recon() {
   suffix="$(fs::file::extract::suffix "$sfile")"
   ! fs::file::isProtected "$sfile" || protected=true
 
+  # XXX wtf?
   printf "%s" "$prefix"
   return=$(printf "%s" "$data" | jq \
     --arg file "$file" \

@@ -17,7 +17,7 @@ dc-ext::http-cache::request(){
   fi
 
   # Otherwise, look-up the cache first
-  body=$(dc-ext::sqlite::select "dchttp" "content" "method='$method' AND url='$url'")
+  body=$(dc-ext::sqlite::select "dchttp" "content" "method='$method' AND url=\"$url\"")
   DC_HTTP_STATUS=200
   DC_HTTP_CACHE=hit
 
@@ -28,10 +28,10 @@ dc-ext::http-cache::request(){
 #    >&2 echo ">>> will query now"
     if body="$(_dc_internal_ext::simplerequest "$url" "$method" "" /dev/stdout "$@" | base64)"; then
       # Ensure there is nothing in here
-      dc-ext::sqlite::delete "dchttp" "url='$url' AND method='$method'" || true
+      dc-ext::sqlite::delete "dchttp" "url=\"$url\" AND method='$method'" || true
       # Insert in the database
 #      >&2 echo ">>> will insert in db"
-      dc-ext::sqlite::insert "dchttp" "url, method, content" "'$url', '$method', '$body'"
+      dc-ext::sqlite::insert "dchttp" "url, method, content" "\"$url\", '$method', '$body'"
     else
       ex="$ERROR_NETWORK"
     fi

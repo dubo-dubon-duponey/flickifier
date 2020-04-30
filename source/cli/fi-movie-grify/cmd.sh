@@ -20,22 +20,21 @@ dc::commander::declare::flag extract "^[0-9]+:[^ ]+( [0-9]+:[^ ]+)*$" "one or ma
 dc::commander::declare::arg 1 ".+" "filename" "media file to process"
 dc::commander::boot
 
-# Requirements
-dc::require ffmpeg "-version" "3.0"
+dc::require ffmpeg 3.0 "-version"
 
 # Argument 1 is mandatory and must be a readable file
-dc::fs::isfile "$DC_PARGV_1"
+dc::fs::isfile "$DC_ARG_1"
 
-filename=$(basename "$DC_PARGV_1")
+filename=$(basename "$DC_ARG_1")
 # extension="${filename##*.}"
 filename="${filename%.*}"
 
 # Optional destination must be a writable directory - create it if not there
-if [ "$DC_ARGV_DESTINATION" ]; then
-  dc::fs::isdir "$DC_ARGV_DESTINATION" writable create
-  destination="$DC_ARGV_DESTINATION/$filename"
+if dc::args::exist destination; then
+  dc::fs::isdir "$DC_ARG_DESTINATION" writable create
+  destination="$DC_ARG_DESTINATION/$filename"
 else
-  destination="$(dirname "$DC_PARGV_1")/$filename-convert"
+  destination="$(dirname "$DC_ARG_1")/$filename-convert"
 fi
 
 
@@ -114,19 +113,19 @@ xxxtranscode::fullmonthy(){
 
 
 
-if ! transmogrify::do "$DC_PARGV_1" "$destination" "${DC_ARGV_CONVERT}" "${DC_ARGV_REMOVE}" "${DC_ARGV_EXTRACT}"; then
+if ! transmogrify::do "$DC_ARG_1" "$destination" "${DC_ARG_CONVERT:-}" "${DC_ARG_REMOVE:-}" "${DC_ARG_EXTRACT:-}"; then
   dc::logger::error "Failed to convert $filename!"
   if [ -f "$destination.mp4" ]; then
     rm "$destination.mp4"
   fi
-  exit "$ERROR_FAILED"
+  exit "$ERROR_GENERIC_FAILURE"
 fi
 
-dc::logger::info "Successfully transmogrified $DC_PARGV_1"
-if [ "$DC_ARGE_DELETE" ] || [ "$DC_ARGE_D" ]; then
+dc::logger::info "Successfully transmogrified $DC_ARG_1"
+if dc::args::exist delete || dc::args::exist d; then
   dc::logger::info "Press enter to delete the original"
   dc::prompt::confirm
-  rm "$DC_PARGV_1"
+  rm "$DC_ARG_1"
   dc::logger::info "Original deleted"
 else
   dc::logger::info "Original preserved"
