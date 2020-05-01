@@ -33,7 +33,7 @@ echo "NOT LD"
 echo "--------------------------------------"
 directory="/Volumes/OnePotato/The End of Silence/0. h264+ ultra High Res"
 echo "KO files (uhd)"
-find "$directory" -type d -mindepth 1 -maxdepth 1 -iname "* KO*"
+find "$directory" -type d -mindepth 1 -maxdepth 1 -name "* KO*"
 
 directory="/Volumes/OnePotato/The End of Silence/1. h264+ High Res"
 echo "KO files (hd)"
@@ -41,4 +41,4 @@ find "$directory" -type d -mindepth 1 -maxdepth 1 -iname "* KO*"
 
 echo "--------------------------------------"
 echo "Duplicates"
-./dupe.sh > list.txt; cat list.txt | sort | uniq -d
+# ./dupe.sh > list.txt; cat list.txt | sort | uniq -d

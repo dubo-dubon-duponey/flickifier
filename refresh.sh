@@ -4,16 +4,18 @@
 
 # Done with this
 if [ "$3" ]; then
-  candidate="$(jq -rc 'select(.category == "207") | select((.seeders | tonumber > '"$2"') or (.leechers | tonumber > '"$2"'))' < "$1")"
+  candidate="$(jq -rc 'select(.category == "207") | select((.seeders | tonumber > 0)) | select((.seeders | tonumber > '"$2"') or (.leechers | tonumber > '"$2"'))' < "$1")"
 else
   candidate="$(jq -rc 'select((.seeders | tonumber > '"$2"') or (.leechers | tonumber > '"$2"'))' < "$1")"
 fi
+notdead="$(jq -rc 'select((.seeders | tonumber > 0))' < "$1")"
+hdnotdead="$(jq -rc 'select(.category == "207") | select((.seeders | tonumber > 0))' < "$1")"
 # candidate="$(jq -rc 'select(.category == "207") | select(.seeders | tonumber > 2)' < torrent-for-dvd-replace-2.txt)"
 
 list="$(jq -rc '.hash + "|" + .imdb + "|" + .magnet' <<<"$candidate")"
 
 echo " >>>>> Auditing $1 - minimum number of seeders or leechers: $2 - restricting to highdef? ($3)"
-wc -l <<<"$list"
+echo "selected: $(wc -l <<<"$list") / HD not dead: $(wc -l <<<"$hdnotdead") / not dead: $(wc -l <<<"$notdead") / total: $(wc -l <"$1")"
 
 for i in $list; do
   hash=${i%|*}
@@ -26,7 +28,7 @@ for i in $list; do
     echo "Fetching $imdb ($hash)"
     aria2c --bt-metadata-only=true --bt-save-metadata=true -d "$HOME/Downloads/Transmission/Intorrent/$imdb" -q "$mag"
   fi
-  open "$HOME/Downloads/Transmission/Intorrent/$imdb/$hash.torrent"
+#  open "$HOME/Downloads/Transmission/Intorrent/$imdb/$hash.torrent"
 done
 
 exit

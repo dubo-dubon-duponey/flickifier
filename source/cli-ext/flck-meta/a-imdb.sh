@@ -52,7 +52,11 @@ flck::requestor::imdb::search::title() {
 
     printf "%s{" "$sep"
 
-    perl -pe 's/.*<a href="\/title\/(tt[0-9]{7,})[^>]+>[^<]*<img alt="([^"]+)[^>]*loadlate="([^"]+).*/"id": "\1", "title": "\2", "picture": "\3",/' <<<"$line"
+    # In some occasions (try "Big Trouble in Big China"), imdb does not escape quotes in alt attributes, breaking the search here <- xss anyone?
+#<div class="lister-item mode-advanced">         <div class="lister-top-right">     <div class="ribbonize" data-tconst="tt8715824" data-caller="filmosearch"></div>         </div>
+# <div class="lister-item-image float-left">
+#  <a href="/title/tt8715824/?ref_=adv_li_i" > <img alt=""Big Trouble in Little China" Dragon Green Eye Cocktail" class="loadlate" loadlate="https://m.media-amazon.com/images/G/01/imdb/images/nopicture/67x98/film-2500266839._CB466680099_.png" data-tconst="tt8715824" height="98" src="https://m.media-amazon.com/images/G/01/imdb/images/nopicture/large/film-184890147._CB466725069_.png" width="67" /> </a>        </div>         <div class="lister-item-content"> <h3 class="lister-item-header">         <span class="lister-item-index unbold text-primary">23.</span> <a href="/title/tt5371400/?ref_=adv_li_tt" > The Homicidal Homemaker</a>            <span class="lister-item-year text-muted unbold">(2016– )</span>         <br />     <small class="text-primary unbold">Episode:</small>     <a href="/title/tt8715824/?ref_=adv_li_tt" >"Big Trouble in Little China" Dragon Green Eye Cocktail</a>     <span class="lister-item-year text-muted unbold">(2016)</span> </h3>     <p class="text-muted ">                          <span class="genre"> Horror            </span>     </p>     <div class="ratings-bar">             <div class="inline-block ratings-user-rating">                 <span class="userRatingValue" id="urv_tt8715824" data-tconst="tt8715824">                     <span class="global-sprite rating-star no-rating"></span>                     <span name="ur" data-value="0" class="rate" data-no-rating="Rate this">Rate this</span>                 </span>     <div class="starBarWidget" id="sb_tt8715824"> <div class="rating rating-list" data-starbar-class="rating-list" data-auth="" data-user="" id="tt8715824|imdb|0|0|adv_li_tt||advsearch|title" data-ga-identifier="" title="Awaiting enough ratings - click stars to rate" itemtype="http://schema.org/AggregateRating" itemscope="" itemprop="aggregateRating">   <meta itemprop="ratingValue" content="0" />   <meta itemprop="bestRating" content="10" />   <meta itemprop="ratingCount" content="0" /> <span class="rating-bg"> </span> <span class="rating-imdb " style="width: 0px"> </span> <span class="rating-stars">       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>1</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>2</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>3</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>4</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>5</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>6</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>7</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>8</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>9</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>10</span></a> </span> <span class="rating-rating "><span class="value">-</span><span class="grey">/</span><span class="grey">10</span></span> <span class="rating-cancel "><a href="/title/tt8715824/vote?v=X;k=" title="Delete" rel="nofollow"><span>X</span></a></span>  </div>     </div>             </div>     </div> <p class="text-muted">         <a href="/updates?update=tt8715824%3Aoutlines.add.1&ref_=tt_ov_cn_pl" >Add a Plot</a> </p>     <p class="">     Directors: <a href="/name/nm3727718/?ref_=adv_li_dr_0" >Kaci Hansen</a>,  <a href="/name/nm4899024/?ref_=adv_li_dr_1" >Ian Pugh</a>                  <span class="ghost">|</span>      Star: <a href="/name/nm3727718/?ref_=adv_li_st_0" >Kaci Hansen</a>     </p>         </div>     </div>
+    perl -pe 's/.*<a href="\/title\/(tt[0-9]{7,})[^>]+>[^<]*<img alt="([^"]*)[^>]*loadlate="([^"]+).*/"id": "\1", "title": "\2", "picture": "\3",/' <<<"$line"
 
     year="$(perl -pe 's/.*<span class="lister-item-year text-muted unbold">([^<]*[(]([0-9]*)[^)]*[)])?.*/\2/' <<<"$line")"
     printf '"year": "%s",' "$year"
@@ -167,7 +171,7 @@ flck::requestor::imdb::get::title::techspecs() {
       sep='<span class="ghost">|</span>'
       while IFS= read -r -d '' i; do
         i="$(perl -pe 's/<[^>]+>//g' <<<"$i" | perl -pe 's/[[:space:]]*$//' | perl -pe 's/^[[:space:]]*//' | perl -pe 's/[[:space:]]{2,}/ /g')"
-        printf '%s"%s"' "$ec" "$i"
+        printf '%s"%s"' "$ec" "$(perl -pe 's/"/\\"/g' <<<"$i")"
         ec=", "
       done < <(dc::string::split value sep)
     elif [ "$key" == "RUNTIME" ]; then
@@ -186,7 +190,7 @@ flck::requestor::imdb::get::title::techspecs() {
         ! dc::wrapped::grep -q "([0-9]+) min[^)]" <<<"$i" || min="$(perl -pe 's/(.*[[:space:]*])?([0-9]+) min.*/\2/' <<<"$i")"
         ! dc::wrapped::grep -q "([0-9]+) sec" <<<"$i" || sec="$(perl -pe 's/(.*[[:space:]*])?([0-9]+) sec.*/\2/' <<<"$i")"
 
-        rest="$(perl -pe 's/[^(]+([(][0-9]+ min[)] )?(.*)/\2/' <<<"$i" | perl -pe 's/[[:space:]]*$//')"
+        rest="$(perl -pe 's/[^(]+([(][0-9]+ min[)] )?(.*)/\2/' <<<"$i" | perl -pe 's/[[:space:]]*$//' | perl -pe 's/"/\\"/g')"
 
         # >&2 echo "Hour: $hr - Min: $min - Sec: $sec - Rest: $rest"
 
@@ -204,7 +208,8 @@ flck::requestor::imdb::get::title::techspecs() {
       sep="<br>"
       while IFS= read -r -d '' i; do
         i="$(printf "%s" "$i" | sed -E 's/<[^>]+>//g' | sed -E 's/[[:space:]]*$//' | sed -E 's/^[[:space:]]*//' | sed -E 's/[[:space:]]{2,}/ /g')"
-        printf '%s"%s"' "$ec" "$i"
+        printf '%s"%s"' "$ec" "$(perl -pe 's/"/\\"/g' <<<"$i")"
+#        printf '%s"%s"' "$ec" "$i"
         ec=", "
       done < <(dc::string::split value sep)
     fi
@@ -299,6 +304,8 @@ flck::requestor::imdb::get::title() {
 
   title="$(perl -pe 's/&quot;/"/g' <<<"$title")"
   schema_title="$(perl -pe 's/&quot;/"/g' <<<"$schema_title")"
+
+  # >&2 flck::requestor::imdb::get::title::techspecs "$identifier"
 
   printf "{%s}" "$(flck::requestor::imdb::get::title::techspecs "$identifier")" | jq \
     --arg title "$title" \
