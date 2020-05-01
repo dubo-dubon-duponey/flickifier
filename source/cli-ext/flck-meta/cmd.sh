@@ -41,6 +41,11 @@ dc::fs::isdir "$HOME/tmp/flck-meta" writable create
 dc-ext::sqlite::init "$HOME/tmp/flck-meta/cache.db"
 dc-ext::http-cache::init
 
+# Configure the client
+! dc::args::exist refresh || flck::cachebust true
+flck::ua "flck-meta/1.0"
+
+
 op="search"
 type="${DC_ARG_TYPE:-title}"
 if dc::argument::check DC_ARG_1 "^tt[0-9]{7,}"; then

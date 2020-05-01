@@ -1,18 +1,21 @@
+_DC_PRIVATE_CACHE_BUST=
+_DC_PRIVATE_UA="dbdbdp"
+
+flck::cachebust(){
+  _DC_PRIVATE_CACHE_BUST=true
+}
+
+flck::ua(){
+  _DC_PRIVATE_UA="$1"
+}
+
 flck::requestor() {
   local url="$1"
   local method="GET"
-  if dc::args::exist refresh; then
-    dc-ext::sqlite::delete "dchttp" "url='$url' AND method='$method'"
-  fi
-
-#  DC_HTTP_CACHE_FORCE_REFRESH=true
-  # dc-ext::http-cache::request "$url" "$method"
-#  >&2 echo ">>>> cache: $DC_HTTP_CACHE"
-#  >&2 echo ">>>> status: $DC_HTTP_STATUS"
-#  exit 1
+  [ ! "$_DC_PRIVATE_CACHE_BUST" ] || dc-ext::sqlite::delete "dchttp" "url=\"$url\" AND method=\"$method\""
 
   dc::logger::debug "Requestor to fetch url $url"
-  dc-ext::http-cache::request "$url" "$method" "" "" "User-Agent: flck-meta/1.0" | dc::wrapped::base64d | tr '\n' ' ' | tr '\r' ' ' || return "$ERROR_NETWORK"
+  dc-ext::http-cache::request "$url" "$method" "" "" "User-Agent: $_DC_PRIVATE_UA" | dc::wrapped::base64d | tr '\n' ' ' | tr '\r' ' ' || return "$ERROR_NETWORK"
 }
 
 flck::requestor::imdb() {
@@ -28,23 +31,28 @@ flck::requestor::imdb() {
 
 # Will throw on no result
 flck::requestor::imdb::search::title() {
-  local question="$1"
+  local question
   local year="${2:-}"
 
-  [ ! "$year" ] || year="&release_date=$year-01-01,$year-12-31"
+  question="$(dc::encoding::uriencode "$1")"
+  [ ! "$year" ] || {
+    dc::argument::check year "^[0-9]{4}$"
+    year="&release_date=$year-01-01,$year-12-31"
+  }
 
   local response
+
+  response="$(
+    flck::requestor::imdb "search/title/?title=$question$year&adult=include" |
+      perl -pe 's/(<div class="lister-item mode-advanced">)/\n\1/g' |
+      dc::wrapped::grep '^<div class="lister-item mode-advanced">'
+  )"
+
   local line
   local director
   local runtime
 
   local sep=""
-
-  response="$(
-    flck::requestor::imdb "search/title/?title=$(dc::encoding::uriencode "$question")$year&adult=include" |
-      perl -pe 's/(<div class="lister-item mode-advanced">)/\n\1/g' |
-      dc::wrapped::grep '^<div class="lister-item mode-advanced">'
-  )"
 
   printf "["
   while read -r line; do
@@ -52,10 +60,7 @@ flck::requestor::imdb::search::title() {
 
     printf "%s{" "$sep"
 
-    # In some occasions (try "Big Trouble in Big China"), imdb does not escape quotes in alt attributes, breaking the search here <- xss anyone?
-#<div class="lister-item mode-advanced">         <div class="lister-top-right">     <div class="ribbonize" data-tconst="tt8715824" data-caller="filmosearch"></div>         </div>
-# <div class="lister-item-image float-left">
-#  <a href="/title/tt8715824/?ref_=adv_li_i" > <img alt=""Big Trouble in Little China" Dragon Green Eye Cocktail" class="loadlate" loadlate="https://m.media-amazon.com/images/G/01/imdb/images/nopicture/67x98/film-2500266839._CB466680099_.png" data-tconst="tt8715824" height="98" src="https://m.media-amazon.com/images/G/01/imdb/images/nopicture/large/film-184890147._CB466725069_.png" width="67" /> </a>        </div>         <div class="lister-item-content"> <h3 class="lister-item-header">         <span class="lister-item-index unbold text-primary">23.</span> <a href="/title/tt5371400/?ref_=adv_li_tt" > The Homicidal Homemaker</a>            <span class="lister-item-year text-muted unbold">(2016– )</span>         <br />     <small class="text-primary unbold">Episode:</small>     <a href="/title/tt8715824/?ref_=adv_li_tt" >"Big Trouble in Little China" Dragon Green Eye Cocktail</a>     <span class="lister-item-year text-muted unbold">(2016)</span> </h3>     <p class="text-muted ">                          <span class="genre"> Horror            </span>     </p>     <div class="ratings-bar">             <div class="inline-block ratings-user-rating">                 <span class="userRatingValue" id="urv_tt8715824" data-tconst="tt8715824">                     <span class="global-sprite rating-star no-rating"></span>                     <span name="ur" data-value="0" class="rate" data-no-rating="Rate this">Rate this</span>                 </span>     <div class="starBarWidget" id="sb_tt8715824"> <div class="rating rating-list" data-starbar-class="rating-list" data-auth="" data-user="" id="tt8715824|imdb|0|0|adv_li_tt||advsearch|title" data-ga-identifier="" title="Awaiting enough ratings - click stars to rate" itemtype="http://schema.org/AggregateRating" itemscope="" itemprop="aggregateRating">   <meta itemprop="ratingValue" content="0" />   <meta itemprop="bestRating" content="10" />   <meta itemprop="ratingCount" content="0" /> <span class="rating-bg"> </span> <span class="rating-imdb " style="width: 0px"> </span> <span class="rating-stars">       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>1</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>2</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>3</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>4</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>5</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>6</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>7</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>8</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>9</span></a>       <a href="/register/login?why=vote&ref_=tt_ov_rt" rel="nofollow" title="Register or login to rate this title" ><span>10</span></a> </span> <span class="rating-rating "><span class="value">-</span><span class="grey">/</span><span class="grey">10</span></span> <span class="rating-cancel "><a href="/title/tt8715824/vote?v=X;k=" title="Delete" rel="nofollow"><span>X</span></a></span>  </div>     </div>             </div>     </div> <p class="text-muted">         <a href="/updates?update=tt8715824%3Aoutlines.add.1&ref_=tt_ov_cn_pl" >Add a Plot</a> </p>     <p class="">     Directors: <a href="/name/nm3727718/?ref_=adv_li_dr_0" >Kaci Hansen</a>,  <a href="/name/nm4899024/?ref_=adv_li_dr_1" >Ian Pugh</a>                  <span class="ghost">|</span>      Star: <a href="/name/nm3727718/?ref_=adv_li_st_0" >Kaci Hansen</a>     </p>         </div>     </div>
+    # XXX imdb does not escape quotes in alt attributes, breaking the search here
     perl -pe 's/.*<a href="\/title\/(tt[0-9]{7,})[^>]+>[^<]*<img alt="([^"]*)[^>]*loadlate="([^"]+).*/"id": "\1", "title": "\2", "picture": "\3",/' <<<"$line"
 
     year="$(perl -pe 's/.*<span class="lister-item-year text-muted unbold">([^<]*[(]([0-9]*)[^)]*[)])?.*/\2/' <<<"$line")"
