@@ -33,6 +33,7 @@ flck::requestor::imdb() {
 flck::requestor::imdb::search::title() {
   local question
   local year="${2:-}"
+  local limit="${3:-0}"
 
   question="$(dc::encoding::uriencode "$1")"
   [ ! "$year" ] || {
@@ -53,6 +54,7 @@ flck::requestor::imdb::search::title() {
   local runtime
 
   local sep=""
+  local count=0
 
   printf "["
   while read -r line; do
@@ -66,7 +68,9 @@ flck::requestor::imdb::search::title() {
     year="$(perl -pe 's/.*<span class="lister-item-year text-muted unbold">([^<]*[(]([0-9]*)[^)]*[)])?.*/\2/' <<<"$line")"
     printf '"year": "%s",' "$year"
 
-    ! dc::wrapped::grep -q 'Director: ' <<<"$line" || director="$(perl -pe 's/.*Director: <a href="\/name\/(nm[0-9]{7,})[^>]+>([^<]*).*/\2/' <<<"$line")"
+    director=""
+    # XXX this will match only the first listed director in case of multiple director*s*
+    ! dc::wrapped::grep -q 'Directors?: ' <<<"$line" || director="$(perl -pe 's/.*Directors?: <a href="\/name\/(nm[0-9]{7,})[^>]+>([^<]*).*/\2/' <<<"$line")"
     printf '"director": "%s",' "$director"
 
     ! dc::wrapped::grep -q '<span class="runtime">' <<<"$line" || {
@@ -76,10 +80,13 @@ flck::requestor::imdb::search::title() {
       }
       runtime="$(perl -pe 's/.*<span class="runtime">(.*?) min<\/span>.*/\1/' <<<"$line")"
     }
-    printf '"runtime": "%s"' "$runtime"
+
+    [ "${runtime:-}" ] && printf '"runtime": "%s"' "$runtime" || printf '"runtime": "0"'
 
     printf "}"
     sep=","
+    count=$(( count + 1 ))
+    [ "$limit" == 0 ] || [ "$count" -lt "$limit" ] || break
   done <<<"$response"
 
   printf "]"
@@ -154,6 +161,7 @@ flck::requestor::imdb::get::title::techspecs() {
   local ar=""
   local i
 
+  #XXX broken
   while
     line=${response%%"</tr>"*}
     [ "$line" != "$response" ]
@@ -164,6 +172,7 @@ flck::requestor::imdb::get::title::techspecs() {
     key=${line%%"</td>"*}
     value=${line#*"<td>"}
     value=${value%%"</td>"*}
+
     # XXX sed will introduce a trailing line feed
     key="$(perl -pe 's/[[:space:]]*$//' <<<"$key" | perl -pe 's/^[[:space:]]*//' | tr -d '\n' | tr '[:lower:]' '[:upper:]' | tr '[:space:]' '_')"
 
@@ -231,19 +240,21 @@ flck::requestor::imdb::get::title::episodes() {
 
   response="$(flck::requestor::imdb "title/$identifier/episodes?season=$season")"
 
-  # Episodes are not &quot protected
-#  episodes="$(perl -pe "s/\/title\/(tt[0-9]{7,})\/[?]ref_=ttep_ep([0-9]+)[^>]+title=\"([^\"]+)\" itemprop=\"name\"/\n,{\"id\": \"\1\", \"number\": \"\2\", \"title\": \"\3\"}\n/g" <<<"$response" | dc::wrapped::grep -E "^,{\"id\"")"
+  # perl -pe 's/.*<script id="__NEXT_DATA__"[^>]*>((?:[^<]*|<[^\/])*).*/\1/g' <<<"$response" | >&2 jq -rc '.props.pageProps.contentData.section.episodes.items'
+  ! dc::wrapped::grep -q '__NEXT_DATA__' <<<"$response" || {
+    perl -pe 's/.*<script id="__NEXT_DATA__"[^>]*>((?:[^<]*|<[^\/])*).*/\1/g' <<<"$response" | jq '[.props.pageProps.contentData.section.episodes.items.[] | {id: .id, number: .episode, title: .titleText}]' || true
+    return
+  }
 
   printf "["
   local sep=""
   while read -r item; do
     episodes="$(perl -pe "s/.*itemprop=\"episodeNumber\" content=\"([^\"]+).*\/title\/(tt[0-9]{7,})[^>]+title=\"([^\"]+)\" itemprop=\"name\"/\n{\"id\": \"\2\", \"number\": \"\1\", \"title\": \"\3\"}\n/g" <<<"$item" | dc::wrapped::grep "^{\"id\"")"
-#    if [ "$episodes" ]; then
-      printf "%s%s" "$sep" "$(perl -pe "s/&quot;/\\\\\"/"<<<"$episodes")"
-      sep=","
-#    fi
+    printf "%s%s" "$sep" "$(perl -pe "s/&quot;/\\\\\"/"<<<"$episodes")"
+    sep=","
   done < <(perl -pe 's/(<div class="info" itemprop="episodes")/\n\1/g' <<<"$response" | dc::wrapped::grep '^<div class="info" itemprop="episodes"' )
-  #
+
+
   printf "]"
 }
 
@@ -274,27 +285,43 @@ flck::requestor::imdb::get::title() {
 
   # Extract the shema.org section, then the original title and picture url
   schema="$(perl -pe 's/.*<script type="application\/ld[+]json">([^<]+).*/\1/' <<<"$response")"
-
   schema_title="$(jq -r '.name' <<<"$schema")"
   schema_picture="$(jq -r 'select(.image != null).image' <<<"$schema")"
   schema_type="$(jq -r '."@type"' <<<"$schema")"
   schema_date="$(jq -r 'select(.datePublished != null).datePublished' <<<"$schema")"
   # dc::output::json "$schema"
   schema_director="$(jq -r 'select(.director != null).director | if type=="array" then .[0].name else .name end' <<<"$schema")"
-  schema_creator="$(jq -r 'select(.creator != null).creator | if type=="array" then .[0] else . end | select(.name != null).name' <<<"$schema")"
+  # schema_creator="$(jq -r 'select(.creator != null).creator | if type=="array" then .[0] else . end | select(.name != null).name' <<<"$schema")"
+  # XXX so, multiple creators - what happens then?
+  schema_creator="$(jq -r 'select(.creator != null).creator | if type=="array" then .[] else [.] end | select(.name != null).name' <<<"$schema")"
   schema_duration="$(jq -r 'select(.duration != null).duration' <<<"$schema")"
 
   # Process the body to get the title, year and type
-  cleaned="$(perl -pe "s/.*<meta property='og:title'[^>]+content=\"([^\"]+).*/\1/" <<<"$response")"
+  cleaned="$(perl -pe "s/.*<meta property=[\"']og:title[\"'][^>]+content=\"([^\"]+).*/\1/" <<<"$response")"
   year="$(perl -pe "s/^.*[(][^)–]*([0-9]{4}[0-9– ]*)[)].*/\1/" <<<"$cleaned")"
   year="${year%–*}"
   title="$(perl -pe "s/^(.*)[[:space:]]+[(][^)]*[0-9]{4}[0-9– ]*[)].*/\1/" <<<"$cleaned")"
 
   eps="{"
 
+  # https://www.imdb.com/title/tt8806524/episodes
+  #>&2 echo "response $response"
+  #select aria-label="3 seasons"
+  ! dc::wrapped::grep -q '<select[^>]*aria-label="([0-9]*)' <<<"$response" || {
+    line="$(perl -pe 's/.*<select[^>]*aria-label="([0-9]*) season.*/\1/' <<<"$response")"
+    sep=""
+    for season in $(seq 1 $line); do
+      eps+="$(printf '%s"%s": ' "$sep" "$season")"
+      sep=","
+      eps+="$(flck::requestor::imdb::get::title::episodes "$identifier" "$season")"
+    done
+  }
+
   if parts="$(perl -pe "s/(\/title\/$identifier\/episodes[?]season=[^&]+)/\n\1\n/g" <<<"$response" | dc::wrapped::grep "\/title\/$identifier\/episodes[?]season=")"; then
+    #>&2 echo "parts $parts"
     sep=""
     while read -r line; do
+      #>&2 echo "line $line"
       eps+="$(printf '%s"%s": ' "$sep" "$(perl -pe "s/.*season=([^&]+).*/\1/" <<<"$line")")"
       sep=","
       eps+="$(flck::requestor::imdb::get::title::episodes "$identifier" "$(perl -pe "s/.*season=([^&]+).*/\1/" <<<"$line")")"
