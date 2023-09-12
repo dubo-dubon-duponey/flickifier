@@ -27,8 +27,10 @@ for i in $list; do
   if [ ! -f "$HOME/Downloads/Transmission/Intorrent/$imdb/$hash.torrent" ]; then
     echo "Fetching $imdb ($hash)"
     aria2c --bt-metadata-only=true --bt-save-metadata=true -d "$HOME/Downloads/Transmission/Intorrent/$imdb" -q "$mag"
+  else
+    echo "Fetched $i"
   fi
-#  open "$HOME/Downloads/Transmission/Intorrent/$imdb/$hash.torrent"
+  open "$HOME/Downloads/Transmission/Intorrent/$imdb/$hash.torrent"
 done
 
 exit
