@@ -15,6 +15,7 @@ dc::commander::initialize
 dc::commander::declare::flag refresh "^$" "ignores local cache if set" optional
 dc::commander::declare::flag type "^(title|person)$" "if searching, point towards titles or persons - ignored otherwise" optional
 dc::commander::declare::flag year "^[0-9]{4}$" "when searching for a movie, restrict search to that year" optional
+dc::commander::declare::flag limit "^[0-9]+$" "limit the number of search results (default: as many as returned by the service)" optional
 dc::commander::declare::flag role "^.+$" "if looking up a person results by id, returns only the movies matching that role for that person, defaulting to director (ignored otherwise)" optional
 
 dc::commander::declare::arg 1 "^.+$" "term" "argument to be searched or retrieved (either a plain text search, or an imdb identifier, like tt0000001)"
@@ -63,7 +64,7 @@ case "$op" in
     if [ "$type" == "person" ]; then
       result="$(flck::requestor::imdb::search::name "$DC_ARG_1")"
     else
-      result="$(flck::requestor::imdb::search::title "$DC_ARG_1" "${DC_ARG_YEAR:-}")"
+      result="$(flck::requestor::imdb::search::title "$DC_ARG_1" "${DC_ARG_YEAR:-}" "${DC_ARG_LIMIT:-}")"
     fi
   ;;
   "get")

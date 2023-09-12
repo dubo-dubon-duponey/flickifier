@@ -23,16 +23,16 @@ fs::file::extract::suffix() {
   local file="$1"
 
   if dc::wrapped::grep -qi "[,. ]part[ ]*[0-9]+" <<<"$file"; then
-    perl -pe 's/.*[,. ]part[ ]*([0-9]+).*/, E\1/i' <<<"$file"
+    perl -pe 's/.*[,. ]part[ ]*([0-9]+).*/, part\1/i' <<<"$file"
   fi
   if dc::wrapped::grep -qi "[,. ]cd[ ]*[0-9]+" <<<"$file"; then
-    perl -pe 's/.*[,. ]cd[ ]*([0-9]+).*/, E\1/i' <<<"$file"
+    perl -pe 's/.*[,. ]cd[ ]*([0-9]+).*/, part\1/i' <<<"$file"
   fi
   if dc::wrapped::grep -qi "[,. ]disc[ ]*[0-9]+" <<<"$file"; then
-    perl -pe 's/.*[,. ]disc[ ]*([0-9]+).*/, E\1/i' <<<"$file"
+    perl -pe 's/.*[,. ]disc[ ]*([0-9]+).*/, part\1/i' <<<"$file"
   fi
-  if dc::wrapped::grep -qi "(^|.*[ .,_-])season[ .,_-]*[0-9]+[ .,_-]*episode[ .,_-]*[0-9]+" <<<"$file"; then
-    perl -pe 's/(^|.*[ .,_-])season[ .,_-]*([0-9]+)[ .,_-]*episode[ .,_-]*([0-9]+).*/, S\2E\3/i' <<<"$file"
+  if dc::wrapped::grep -qi "(^|.*[ .,_-])season[ .,_-]*([0-9]+|unknown)[ .,_-]*episode[ .,_-]*[0-9]+" <<<"$file"; then
+    perl -pe 's/(^|.*[ .,_-])season[ .,_-]*([0-9]+|unknown)[ .,_-]*episode[ .,_-]*([0-9]+).*/, S\2E\3/i' <<<"$file"
   fi
 
   if dc::wrapped::grep -qi "^(.*[ .,_-]+)?(S[0-9]+)?[ .,_-]*EP?[0-9]+" <<<"$file"; then
@@ -71,7 +71,7 @@ fs::file::extract::base() {
 fs::file::isProtected() {
   local file="$1"
   # XXX suboptimal
-  dc::wrapped::grep -qi "(^Bonus|Sample[.]|^Sample)" <<<"$file"
+  dc::wrapped::grep -qi "(^Bonus|Sample[.]|^Sample|^Extras)" <<<"$file"
 }
 
 refactor::newfilename(){
@@ -184,6 +184,12 @@ fs::file::recon() {
         protected=true
         container="bypass"
       ;;
+      "ASCII text")
+        type="document"
+        extension="txt"
+        protected=true
+        container="bypass"
+      ;;
       *)
         dc::logger::error "$file"
         dc::logger::error " >>> HARD failure <<<"
@@ -194,7 +200,7 @@ fs::file::recon() {
   fi
 
   # XXX dirty bypass
-  [ "$container" ] || container="$(jq -r '.container' <<<"$data")"
+  [ "${container:-}" ] || container="$(jq -r '.container' <<<"$data")"
   video="$(jq -r '.video | length' <<<"$data")"
   audio="$(jq -r '.audio | length' <<<"$data")"
   subtitle="$(jq -r '.subtitles | length' <<<"$data")"

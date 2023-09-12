@@ -61,7 +61,7 @@ if ! dc::wrapped::grep -q "tt[0-9]{7,}" <<<"$directory"; then
 
   confirm=""
   while [ "$confirm" != "y" ]; do
-    args=(flck-meta)
+    args=(flck-meta "--limit=3")
     year=""
     if dc::wrapped::grep -q "[0-9]{4}$" <<<"$candidate"; then
       year="$(perl -pe 's/.* ([0-9]{4})$/\1/' <<<"$candidate")"
@@ -143,7 +143,7 @@ h="$(printf "%s" "$nonBonusMovies" | jq -r -c '.[0] | (.height|tostring)')"
 if [ "$c" != "hevc" ] && [ "$c" != "h264" ]; then
   dc::logger::error "    > codec: $c"
 fi
-res=""
+#res=""
 if [ "$h" -le 500 ] && [ "$w" -le 600 ]; then
   dc::logger::error "    > res: LD"
 #  res="LD"
@@ -158,18 +158,18 @@ elif [ "$w" -le 1280 ]; then
 #  res="uHD"
 fi
 
-
 # Does it have parts?
-parts="$(jq -rc '.parts | . as $in| keys[] | $in[.] | .[]' <<<"$imdb")"
-seasons="$(jq -rc '.parts | [. as $in| keys[]]' <<<"$imdb")"
-nbseasons="$(jq -rc '.parts | [. as $in| keys[]] | length' <<<"$imdb")"
+#parts="$(jq -rc '.parts | . as $in| keys[] | $in[.] | .[]' <<<"$imdb")"
+#seasons="$(jq -rc '.parts | [. as $in| keys[]]' <<<"$imdb")"
+#nbseasons="$(jq -rc '.parts | [. as $in| keys[]] | length' <<<"$imdb")"
 nbparts="$(jq -rc '.parts | [. as $in| keys[] | $in[.] | .[].id] | length' <<<"$imdb")" #  | wc -l
 nbparts="${nbparts#* }"
 if [ "$nbparts" != "0" ]; then
   nbnb="$(jq length <<<"$nonBonusMovies")"
   if [ "$nbparts" != "$nbnb" ]; then
-    dc::logger::error "WO. Stop here. We have a tvshow here (with $nbparts episodes), but you don't have the right number of episodes to match ($nbnb). We'll try our best, but this is likely missing content."
-    # exit 1
+    dc::logger::error "Stop here. We have a tvshow here (with $nbparts episodes), but you don't have the right number of episodes to match ($nbnb). We'll try our best, but this is likely missing content."
+  else
+    dc::logger::info "TVShow (with $nbparts episodes)"
   fi
 fi
 
@@ -178,9 +178,16 @@ supplemental="$c-${w}x${h}"
 # $(printf "%s" "$nonBonusMovies" | jq -r -c '.[0] | .codec + "-" + (.width|tostring) + "x" + (.height|tostring)' | tr -d '\n')"
 supplemental="$supplemental-$(printf "%s" "$nonBonusMovies" | jq -r -c '.[0].data.audio[] | "(" + (.id|tostring) + ")-" + .codec + "-" + .language' | tr -d '\n')-$density"
 
+if [ "${#supplemental}" -gt 50 ]; then
+  supplemental="${supplemental:0:50}..."
+fi
+
 if [ "$imdbOriginal" == "$imdbTitle" ]; then
   imdbOriginal=
 else
+  if [ "${#imdbOriginal}" -gt 30 ]; then
+    imdbOriginal="${imdbOriginal:0:30}..."
+  fi
   imdbOriginal=" [$imdbOriginal]"
 fi
 
@@ -189,8 +196,8 @@ total=$(jq -rc '. | length' <<<"$renamableFiles")
 for (( i=0; i<$total; i++ )); do
   # Analyze suffix
   suf="$(jq -rc ".[$i].suffix" <<<"$renamableFiles")"
-  ep="$(perl -pe 's/[^0-9]+(S[0]?([0-9]+))?EP?[0]?([0-9]+)/\3/i' <<<"$suf")"
-  se="$(perl -pe 's/[^0-9]+(S[0]?([0-9]+))?EP?[0]?([0-9]+)/\2/i' <<<"$suf")"
+  ep="$(perl -pe 's/[^0-9]+(S[0]?([0-9]+|unknown))?EP?[0]?([0-9]+)/\3/i' <<<"$suf")"
+  se="$(perl -pe 's/[^0-9]+(S[0]?([0-9]+|unknown))?EP?[0]?([0-9]+)/\2/i' <<<"$suf")"
   # No season? Default to default season then
   if [ ! "$se" ]; then
     se="1"
